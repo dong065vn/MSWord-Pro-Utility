@@ -11,3 +11,4 @@ Main.exe
 Main_compiled.exe
 Main_build_*.exe
 Releases/*.zip
+Releases/v*/
