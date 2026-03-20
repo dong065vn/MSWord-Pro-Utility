@@ -1,0 +1,13 @@
+Tests/Logs/
+HotkeyBackups/
+AIFormat_Settings.ini
+IntegrationTestLog_*.txt
+TestLog_*.txt
+aut2exe_build.log
+.a3x
+.exe
+.tok
+Main.exe
+Main_compiled.exe
+Main_build_*.exe
+Releases/*.zip
