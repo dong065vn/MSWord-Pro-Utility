@@ -18,8 +18,8 @@
 #include <MsgBoxConstants.au3>
 
 ; === VERSION ===
-Global Const $VERSION = "6.1.1"
-Global Const $APP_VERSION = "6.1.1"
+Global Const $VERSION = "6.1.2"
+Global Const $APP_VERSION = "6.1.2"
 Global Const $APP_TITLE = "PDF to Word Fixer Pro"
 
 ; === WORD CONSTANTS ===

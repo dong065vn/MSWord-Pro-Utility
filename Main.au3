@@ -1,5 +1,5 @@
 ; ============================================
-; PDF to Word Fixer Pro v6.1.1 - MODULAR ARCHITECTURE
+; PDF to Word Fixer Pro v6.1.2 - MODULAR ARCHITECTURE
 ; Entry Point - Chay file nay de khoi dong
 ; ============================================
 
