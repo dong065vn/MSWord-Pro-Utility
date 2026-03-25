@@ -380,7 +380,8 @@ Func _GetParagraphStylesDataFromDoc($oDocSource)
     Local $oStyles = $oDocSource.Styles
     If Not IsObj($oStyles) Then Return ""
 
-    Local $sData = ""
+    Local $aCustom[1], $aBuiltin[1]
+    Local $iCustom = 0, $iBuiltin = 0
     For $i = 1 To $oStyles.Count
         Local $oStyle = $oStyles.Item($i)
         If Not IsObj($oStyle) Then ContinueLoop
@@ -389,12 +390,76 @@ Func _GetParagraphStylesDataFromDoc($oDocSource)
         Local $sName = $oStyle.NameLocal
         If $sName = "" Then ContinueLoop
         If StringLeft($sName, 1) = "_" Then ContinueLoop
-        If StringInStr($sData, "|" & $sName & "|") > 0 Then ContinueLoop
-        $sData &= $sName & "|"
+        If _StyleNameExistsInArray($aCustom, $iCustom, $sName) Or _StyleNameExistsInArray($aBuiltin, $iBuiltin, $sName) Then ContinueLoop
+
+        Local $bBuiltIn = False
+        $bBuiltIn = $oStyle.BuiltIn
+        If @error Then $bBuiltIn = _GuessBuiltInStyleName($sName)
+
+        If $bBuiltIn Then
+            $iBuiltin += 1
+            ReDim $aBuiltin[$iBuiltin + 1]
+            $aBuiltin[$iBuiltin] = $sName
+        Else
+            $iCustom += 1
+            ReDim $aCustom[$iCustom + 1]
+            $aCustom[$iCustom] = $sName
+        EndIf
     Next
 
-    If $sData = "" Then Return ""
-    Return StringTrimRight($sData, 1)
+    If $iCustom > 1 Then _ArraySort($aCustom, 0, 1, $iCustom)
+    If $iBuiltin > 1 Then _ArraySort($aBuiltin, 0, 1, $iBuiltin)
+
+    Local $sCustom = _JoinStyleArray($aCustom, $iCustom)
+    Local $sBuiltin = _JoinStyleArray($aBuiltin, $iBuiltin)
+    If $sCustom <> "" And $sBuiltin <> "" Then Return $sCustom & "|" & $sBuiltin
+    If $sCustom <> "" Then Return $sCustom
+    Return $sBuiltin
+EndFunc
+
+Func _StyleNameExistsInArray(ByRef $aNames, $iCount, $sNeedle)
+    For $i = 1 To $iCount
+        If $aNames[$i] = $sNeedle Then Return True
+    Next
+    Return False
+EndFunc
+
+Func _JoinStyleArray(ByRef $aNames, $iCount)
+    If $iCount <= 0 Then Return ""
+    Local $sData = ""
+    For $i = 1 To $iCount
+        If $aNames[$i] = "" Then ContinueLoop
+        If $sData <> "" Then $sData &= "|"
+        $sData &= $aNames[$i]
+    Next
+    Return $sData
+EndFunc
+
+Func _GuessBuiltInStyleName($sName)
+    If StringRegExp($sName, "^(Normal|No Spacing|Heading [0-9]+|Title|Subtitle|Subtle Emphasis|Emphasis|Intense Emphasis|Strong|Quote|Intense Quote|Subtle Reference|Intense Reference|Book Title|List( |$)|List Bullet|List Number|Caption|TOC|Index|Header|Footer|Hyperlink|FollowedHyperlink|HTML|Plain Text|Table|Comment)") Then
+        Return True
+    EndIf
+    Return False
+EndFunc
+
+Func _FilterStyleList($sStyles, $sFilter, $sMustInclude = "")
+    Local $sTrimFilter = StringStripWS($sFilter, 3)
+    If $sTrimFilter = "" Then Return $sStyles
+
+    Local $aStyles = StringSplit($sStyles, "|", 2)
+    If Not IsArray($aStyles) Then Return ""
+
+    Local $sResult = ""
+    For $i = 0 To UBound($aStyles) - 1
+        Local $sName = $aStyles[$i]
+        If $sName = "" Then ContinueLoop
+        If StringInStr(StringLower($sName), StringLower($sTrimFilter)) > 0 Or ($sMustInclude <> "" And $sName = $sMustInclude) Then
+            If $sResult <> "" Then $sResult &= "|"
+            $sResult &= $sName
+        EndIf
+    Next
+
+    Return $sResult
 EndFunc
 
 Func _GetOpenWordDocsListData($bIncludeCurrent = True)
@@ -450,7 +515,7 @@ Func _ShowThesisHeadingStyleDialog(ByRef $aMatches, ByRef $aCounts)
         Return
     EndIf
 
-    Local $hPopup = GUICreate("Quet de muc do an va chon style", 720, 470, -1, -1, _
+    Local $hPopup = GUICreate("Quet de muc do an va chon style", 720, 510, -1, -1, _
         BitOR($WS_POPUP, $WS_CAPTION, $WS_SYSMENU))
     GUISetBkColor(0xF7F9FB, $hPopup)
 
@@ -464,32 +529,39 @@ Func _ShowThesisHeadingStyleDialog(ByRef $aMatches, ByRef $aCounts)
     Local $lblSourceHint = GUICtrlCreateLabel("Mac dinh lay style tu chinh file dang sua. Co the doi sang file nguon dang mo.", 30, 73, 620, 18)
     GUICtrlSetColor($lblSourceHint, 0x555555)
 
-    GUICtrlCreateLabel("Cap chuong / muc 1: " & $aCounts[1] & " dong", 30, 108, 220, 20)
-    Local $cboL1 = GUICtrlCreateCombo("", 260, 103, 220, 24, $CBS_DROPDOWNLIST)
+    GUICtrlCreateLabel("Loc style:", 30, 98, 90, 20)
+    Local $inpStyleFilter = GUICtrlCreateInput("", 120, 94, 250, 24)
+    Local $btnApplyFilter = GUICtrlCreateButton("Loc", 380, 93, 55, 26)
+    Local $btnClearFilter = GUICtrlCreateButton("Bo loc", 442, 93, 70, 26)
+    Local $lblFilterHint = GUICtrlCreateLabel("Uu tien style custom len dau. Co the go 0LV, BANG, NOIDUNG... de loc nhanh.", 30, 123, 640, 18)
+    GUICtrlSetColor($lblFilterHint, 0x555555)
 
-    GUICtrlCreateLabel("Cap 1.1: " & $aCounts[2] & " dong", 30, 148, 220, 20)
-    Local $cboL2 = GUICtrlCreateCombo("", 260, 143, 220, 24, $CBS_DROPDOWNLIST)
+    GUICtrlCreateLabel("Cap chuong / muc 1: " & $aCounts[1] & " dong", 30, 148, 220, 20)
+    Local $cboL1 = GUICtrlCreateCombo("", 260, 143, 220, 24, $CBS_DROPDOWNLIST)
 
-    GUICtrlCreateLabel("Cap 1.1.1: " & $aCounts[3] & " dong", 30, 188, 220, 20)
-    Local $cboL3 = GUICtrlCreateCombo("", 260, 183, 220, 24, $CBS_DROPDOWNLIST)
+    GUICtrlCreateLabel("Cap 1.1: " & $aCounts[2] & " dong", 30, 188, 220, 20)
+    Local $cboL2 = GUICtrlCreateCombo("", 260, 183, 220, 24, $CBS_DROPDOWNLIST)
 
-    GUICtrlCreateLabel("Cap 1.1.1.1: " & $aCounts[4] & " dong", 30, 228, 220, 20)
-    Local $cboL4 = GUICtrlCreateCombo("", 260, 223, 220, 24, $CBS_DROPDOWNLIST)
+    GUICtrlCreateLabel("Cap 1.1.1: " & $aCounts[3] & " dong", 30, 228, 220, 20)
+    Local $cboL3 = GUICtrlCreateCombo("", 260, 223, 220, 24, $CBS_DROPDOWNLIST)
 
-    _RefreshThesisStyleCombos($cboL1, $cboL2, $cboL3, $cboL4, $sStyles)
+    GUICtrlCreateLabel("Cap 1.1.1.1: " & $aCounts[4] & " dong", 30, 268, 220, 20)
+    Local $cboL4 = GUICtrlCreateCombo("", 260, 263, 220, 24, $CBS_DROPDOWNLIST)
 
-    GUICtrlCreateLabel("Xem nhanh 12 dong dau tien duoc nhan dien:", 20, 270, 260, 20)
+    _RefreshThesisStyleCombos($cboL1, $cboL2, $cboL3, $cboL4, $sStyles, "")
+
+    GUICtrlCreateLabel("Xem nhanh 12 dong dau tien duoc nhan dien:", 20, 310, 260, 20)
     Local $sPreview = ""
     Local $iLimit = UBound($aMatches) - 1
     If $iLimit > 12 Then $iLimit = 12
     For $i = 1 To $iLimit
         $sPreview &= "[" & $aMatches[$i][0] & "] " & $aMatches[$i][2] & @CRLF
     Next
-    GUICtrlCreateEdit($sPreview, 20, 295, 675, 105, BitOR($ES_READONLY, $WS_VSCROLL))
+    GUICtrlCreateEdit($sPreview, 20, 335, 675, 105, BitOR($ES_READONLY, $WS_VSCROLL))
 
-    Local $btnApply = GUICtrlCreateButton("Ap dung hang loat", 405, 415, 140, 34, $BS_DEFPUSHBUTTON)
+    Local $btnApply = GUICtrlCreateButton("Ap dung hang loat", 405, 455, 140, 34, $BS_DEFPUSHBUTTON)
     GUICtrlSetBkColor($btnApply, 0x27AE60)
-    Local $btnCancel = GUICtrlCreateButton("Dong", 555, 415, 140, 34)
+    Local $btnCancel = GUICtrlCreateButton("Dong", 555, 455, 140, 34)
 
     GUISetState(@SW_SHOW, $hPopup)
 
@@ -520,7 +592,10 @@ Func _ShowThesisHeadingStyleDialog(ByRef $aMatches, ByRef $aCounts)
                     ContinueLoop
                 EndIf
 
-                _RefreshThesisStyleCombos($cboL1, $cboL2, $cboL3, $cboL4, $sStyles)
+                _RefreshThesisStyleCombos($cboL1, $cboL2, $cboL3, $cboL4, $sStyles, GUICtrlRead($inpStyleFilter), True)
+            Case $btnApplyFilter, $inpStyleFilter, $btnClearFilter
+                If $iMsg = $btnClearFilter Then GUICtrlSetData($inpStyleFilter, "")
+                _RefreshThesisStyleCombos($cboL1, $cboL2, $cboL3, $cboL4, $sStyles, GUICtrlRead($inpStyleFilter), True)
             Case $btnApply
                 Local $aStyleMap[5]
                 $aStyleMap[1] = GUICtrlRead($cboL1)
@@ -540,21 +615,41 @@ Func _ShowThesisHeadingStyleDialog(ByRef $aMatches, ByRef $aCounts)
     WEnd
 EndFunc
 
-Func _RefreshThesisStyleCombos($cboL1, $cboL2, $cboL3, $cboL4, $sStyles)
+Func _RefreshThesisStyleCombos($cboL1, $cboL2, $cboL3, $cboL4, $sStyles, $sFilter = "", $bKeepSelection = False)
     Local $sDefaultL1 = _ResolvePreferredStyleName($sStyles, "Heading 1")
     Local $sDefaultL2 = _ResolvePreferredStyleName($sStyles, "Heading 2", $sDefaultL1)
     Local $sDefaultL3 = _ResolvePreferredStyleName($sStyles, "Heading 3", $sDefaultL2)
     Local $sDefaultL4 = _ResolvePreferredStyleName($sStyles, "Heading 4", $sDefaultL3)
+
+    Local $sSelectedL1 = $sDefaultL1
+    Local $sSelectedL2 = $sDefaultL2
+    Local $sSelectedL3 = $sDefaultL3
+    Local $sSelectedL4 = $sDefaultL4
+    If $bKeepSelection Then
+        If GUICtrlRead($cboL1) <> "" Then $sSelectedL1 = GUICtrlRead($cboL1)
+        If GUICtrlRead($cboL2) <> "" Then $sSelectedL2 = GUICtrlRead($cboL2)
+        If GUICtrlRead($cboL3) <> "" Then $sSelectedL3 = GUICtrlRead($cboL3)
+        If GUICtrlRead($cboL4) <> "" Then $sSelectedL4 = GUICtrlRead($cboL4)
+    EndIf
+
+    Local $sListL1 = _FilterStyleList($sStyles, $sFilter, $sSelectedL1)
+    Local $sListL2 = _FilterStyleList($sStyles, $sFilter, $sSelectedL2)
+    Local $sListL3 = _FilterStyleList($sStyles, $sFilter, $sSelectedL3)
+    Local $sListL4 = _FilterStyleList($sStyles, $sFilter, $sSelectedL4)
+    If $sListL1 = "" Then $sListL1 = $sStyles
+    If $sListL2 = "" Then $sListL2 = $sStyles
+    If $sListL3 = "" Then $sListL3 = $sStyles
+    If $sListL4 = "" Then $sListL4 = $sStyles
 
     GUICtrlSetData($cboL1, "", "")
     GUICtrlSetData($cboL2, "", "")
     GUICtrlSetData($cboL3, "", "")
     GUICtrlSetData($cboL4, "", "")
 
-    GUICtrlSetData($cboL1, $sStyles, $sDefaultL1)
-    GUICtrlSetData($cboL2, $sStyles, $sDefaultL2)
-    GUICtrlSetData($cboL3, $sStyles, $sDefaultL3)
-    GUICtrlSetData($cboL4, $sStyles, $sDefaultL4)
+    GUICtrlSetData($cboL1, $sListL1, $sSelectedL1)
+    GUICtrlSetData($cboL2, $sListL2, $sSelectedL2)
+    GUICtrlSetData($cboL3, $sListL3, $sSelectedL3)
+    GUICtrlSetData($cboL4, $sListL4, $sSelectedL4)
 EndFunc
 
 Func _ApplyDetectedThesisHeadingStyles(ByRef $aMatches, ByRef $aStyleMap)
