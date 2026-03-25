@@ -91,10 +91,24 @@ Func _CreateTabQuickUtils()
     GUICtrlSetTip(-1, "Chuyen tat ca Field thanh text (khong the hoan tac)")
     _EndGroup()
     
+    ; === SUA DE MUC ===
+    _CreateGroup(" Sua de muc so ", 30, $iY + 270, ($iColW + $iGap) * 3, 65)
+    _CreateLabel("Tien to:", 40, $iY + 293, 45, 20)
+    $g_inputHeadingPrefixFix = _CreateInput("", 88, $iY + 289, 120, 24)
+    GUICtrlSetTip(-1, "Nhap 1. hoac 2. de chi sua cac de muc bat dau bang tien to do. De trong de sua toan bo.")
+    _CreateLabel("Ngat sau so:", 220, $iY + 293, 70, 20)
+    $g_inputHeadingSeparatorFix = _CreateInput(" ", 295, $iY + 289, 80, 24)
+    GUICtrlSetTip(-1, "Mac dinh la 1 dau cach. Vi du 2.4. Tieu de se thanh 2.4 Tieu de")
+    $g_btnFixHeadingNumberDots = _CreateButton("Sua 2.4. -> 2.4", 390, $iY + 286, 145, 28, 0x16A085)
+    GUICtrlSetTip(-1, "Xoa dau cham cuoi cung trong de muc dang 1. / 2.4. / 3.2.1.")
+    GUICtrlCreateLabel("Vi du: tien to 2. se sua toan bo 2.1., 2.2., 2.4. thanh 2.1, 2.2, 2.4", _
+        545, $iY + 289, 180, 30)
+    _EndGroup()
+
     ; === HUONG DAN ===
-    _CreateGroup(" Huong dan su dung ", 30, $iY + 270, ($iColW + $iGap) * 3, 55)
-    GUICtrlCreateLabel("Tab nay chua cac tien ich nhanh: Dan thong minh | Chon nhanh (doan van, cau) | Di chuyen (trang, heading, bang, hinh) | Chen nhanh | Dinh dang Font | Bookmark", _
-        40, $iY + 290, ($iColW + $iGap) * 3 - 20, 30)
+    _CreateGroup(" Huong dan su dung ", 30, $iY + 340, ($iColW + $iGap) * 3, 55)
+    GUICtrlCreateLabel("Tab nay chua cac tien ich nhanh: Dan thong minh | Chon nhanh (doan van, cau) | Di chuyen (trang, heading, bang, hinh) | Chen nhanh | Dinh dang Font | Bookmark | Sua de muc so", _
+        40, $iY + 360, ($iColW + $iGap) * 3 - 20, 30)
     GUICtrlSetFont(-1, 8, 400)
     GUICtrlCreateGroup("", -99, -99, 1, 1)
 EndFunc

@@ -53,12 +53,18 @@ Func _TestMarkdownStructures()
         "print('hi')" & @CRLF & _
         "```" & @CRLF & _
         "- bullet one" & @CRLF & _
+        "+ bullet plus" & @CRLF & _
+        "- [x] bullet checkbox" & @CRLF & _
         "• bullet two" & @CRLF & _
         "1. first item" & @CRLF & _
         "[OpenAI](https://openai.com)" & @CRLF & _
+        "![Logo](https://example.com/logo.png)" & @CRLF & _
         "| Col1 | Col2 |" & @CRLF & _
         "| --- | --- |" & @CRLF & _
-        "| A | B |" & @CRLF
+        "| A | B |" & @CRLF & _
+        "Name | Value" & @CRLF & _
+        "--- | ---" & @CRLF & _
+        "Foo | Bar" & @CRLF
     $g_oDoc.Range(0, 0).Text = $sText
 
     _Log("STEP: before code blocks")
@@ -78,6 +84,7 @@ Func _TestMarkdownStructures()
 
     $bOk = _Assert(StringInStr($sAll, "```") = 0, "AI convert code blocks xoa marker ```", "AI convert code blocks con marker ```") And $bOk
     $bOk = _Assert(StringInStr($sAll, "[OpenAI]") = 0 And StringInStr($sAll, "https://openai.com") = 0, "AI convert links xoa markdown link", "AI convert links con markdown link") And $bOk
+    $bOk = _Assert(StringInStr($sAll, "![Logo]") = 0 And StringInStr($sAll, "https://example.com/logo.png") = 0, "AI convert links xoa markdown image link", "AI convert links con markdown image link") And $bOk
 
     Local $bHasConsolas = False
     Local $oParas = $g_oDoc.Paragraphs
@@ -104,11 +111,11 @@ Func _TestMarkdownStructures()
             If StringInStr($oPara2.Range.Text, "first item") > 0 Then $iNumberParas += 1
         EndIf
     Next
-    $bOk = _Assert($iBulletParas >= 2, "AI convert bullets tao list cho ca 2 dong bullet", "AI convert bullets chua tao du list") And $bOk
+    $bOk = _Assert($iBulletParas >= 4, "AI convert bullets tao list cho cac dang bullet/checkbox", "AI convert bullets chua tao du list") And $bOk
     $bOk = _Assert($iNumberParas >= 1, "AI convert numbered list tao duoc numbered list", "AI convert numbered list that bai") And $bOk
     $bOk = _Assert(Not $bMergedBulletAndNumber, "AI convert lists giu paragraph tach biet", "AI convert lists lam dính bullet va numbered item") And $bOk
 
-    $bOk = _Assert($g_oDoc.Tables.Count >= 1, "AI convert tables tao duoc Word table", "AI convert tables khong tao duoc table") And $bOk
+    $bOk = _Assert($g_oDoc.Tables.Count >= 2, "AI convert tables tao duoc ca 2 dang Markdown table", "AI convert tables khong tao du du lieu bang") And $bOk
     If $g_oDoc.Tables.Count >= 1 Then
         Local $oTable = $g_oDoc.Tables.Item(1)
         $bOk = _Assert($oTable.Rows.Count >= 2 And $oTable.Columns.Count = 2, "AI convert tables tao dung kich thuoc co ban", "AI convert tables sai kich thuoc") And $bOk

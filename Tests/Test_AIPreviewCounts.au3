@@ -59,10 +59,16 @@ Func _TestPreviewCounts()
     Local $sText = "# H1" & @CRLF & _
         "## H2" & @CRLF & _
         "Paragraph with **bold one** and **bold two**." & @CRLF & _
+        "Paragraph with *italic one*." & @CRLF & _
+        "- bullet one" & @CRLF & _
+        "1. numbered one" & @CRLF & _
         "[OpenAI](https://openai.com)" & @CRLF & _
         "```" & @CRLF & _
         "code sample" & @CRLF & _
-        "```" & @CRLF
+        "```" & @CRLF & _
+        "| A | B |" & @CRLF & _
+        "| - | - |" & @CRLF & _
+        "| 1 | 2 |" & @CRLF
     $g_oDoc.Range(0, 0).Text = $sText
 
     AdlibRegister("_ClosePreviewDialog", 250)
@@ -73,8 +79,12 @@ Func _TestPreviewCounts()
     Local $bOk = True
     $bOk = _Assert(StringInStr($sPreview, "Headings (##): ~2") > 0, "AI preview dem dung so heading", "AI preview dem sai heading") And $bOk
     $bOk = _Assert(StringInStr($sPreview, "Bold (**): ~2") > 0, "AI preview dem dung so bold", "AI preview dem sai bold") And $bOk
+    $bOk = _Assert(StringInStr($sPreview, "Italic (*): ~1") > 0, "AI preview dem dung so italic", "AI preview dem sai italic") And $bOk
     $bOk = _Assert(StringInStr($sPreview, "Code blocks (```): ~1") > 0, "AI preview dem dung so code block", "AI preview dem sai code block") And $bOk
     $bOk = _Assert(StringInStr($sPreview, "Links [...]: ~1") > 0, "AI preview dem dung so link", "AI preview dem sai link") And $bOk
+    $bOk = _Assert(StringInStr($sPreview, "Bullets: ~1") > 0, "AI preview dem dung so bullet", "AI preview dem sai bullet") And $bOk
+    $bOk = _Assert(StringInStr($sPreview, "Numbered lists: ~1") > 0, "AI preview dem dung so numbered list", "AI preview dem sai numbered list") And $bOk
+    $bOk = _Assert(StringInStr($sPreview, "Table lines: ~3") > 0, "AI preview dem dung so dong bang", "AI preview dem sai so dong bang") And $bOk
 
     $g_oDoc.Close(0)
     Return $bOk

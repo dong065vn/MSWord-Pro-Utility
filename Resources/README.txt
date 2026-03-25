@@ -30,4 +30,4 @@ LUU Y:
 - Dung Ctrl+Z de Undo
 - Khong chay "Run as Administrator" de tranh loi UAC
 
-PHIEN BAN: 6.0 (Modular Architecture)
+PHIEN BAN: 6.1.1 (Modular Architecture)

@@ -18,8 +18,8 @@
 #include <MsgBoxConstants.au3>
 
 ; === VERSION ===
-Global Const $VERSION = "6.1"
-Global Const $APP_VERSION = "6.1"
+Global Const $VERSION = "6.1.1"
+Global Const $APP_VERSION = "6.1.1"
 Global Const $APP_TITLE = "PDF to Word Fixer Pro"
 
 ; === WORD CONSTANTS ===
@@ -113,6 +113,7 @@ Global $g_aImportantStyles[15] = ["Normal", "Heading 1", "Heading 2", "Heading 3
 
 ; === Tab 6: Advanced ===
 Global $g_btnAutoHeading, $g_btnResetHeading, $g_btnHeadingToTOC, $g_btnListHeadings
+Global $g_btnScanThesisHeadings
 Global $g_btnRemoveAllFormat, $g_btnConvertCase, $g_btnRemoveHyperlinks
 Global $g_btnRemoveComments, $g_btnAcceptChanges
 Global $g_btnNumberToText, $g_btnBulletToText, $g_btnNumberToTextSel
@@ -133,6 +134,7 @@ Global $g_btnToggleSub, $g_btnToggleSuper
 Global $g_btnIncreaseIndent, $g_btnDecreaseIndent, $g_btnRemoveFirstIndent, $g_btnSetFirstIndent
 Global $g_btnInsertSpecialChar, $g_btnAddBookmark, $g_btnGoToBookmark, $g_btnDeleteBookmark
 Global $g_btnShowDocInfo, $g_btnRemoveHighlightSel, $g_btnRemoveCommentsSel, $g_btnUnlinkFields
+Global $g_inputHeadingPrefixFix, $g_inputHeadingSeparatorFix, $g_btnFixHeadingNumberDots
 
 ; === Tab 8: Smart Fix (NEW) ===
 Global $g_btnSmartAnalyze, $g_btnSmartFixAll
@@ -149,7 +151,7 @@ Global $g_btnAIFont, $g_btnAISpacing, $g_btnAIMargins, $g_btnAIIndent
 Global $g_btnAIFixSpaces, $g_btnAIFixPunctuation, $g_btnAIRemoveEmptyLines
 Global $g_btnAIFixAllThesis
 Global $g_btnAILaTeX, $g_btnAIRemoveEmoji, $g_btnAIFixEncoding, $g_btnAIPreview
-Global $g_btnAISettings, $g_btnAICleanup, $g_btnAIBeautify, $g_btnAIBeautifySettings
+Global $g_btnAINormalizeMath, $g_btnAISettings, $g_btnAICleanup, $g_btnAIBeautify, $g_btnAIBeautifySettings
 
 ; === COM ERROR HANDLER ===
 Global $g_bMuteComErrors = False

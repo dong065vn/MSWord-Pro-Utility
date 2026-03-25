@@ -75,6 +75,7 @@ Func _TestLaTeXAndEmoji()
     $g_oDoc.Range(0, 0).Text = $sText
 
     _AI_ConvertLaTeX()
+    _AI_NormalizeAllMath(False)
     _AI_RemoveEmoji()
 
     Local $bOk = True
@@ -86,7 +87,7 @@ Func _TestLaTeXAndEmoji()
     Local $oMathInline = _FindTextRange("x+y")
     $bOk = _Assert(IsObj($oMathInline), "Tim duoc inline formula de verify", "Khong tim thay inline formula sau convert") And $bOk
     If IsObj($oMathInline) Then
-        $bOk = _Assert($oMathInline.Font.Name = "Cambria Math" And $oMathInline.Font.Italic = True, "AI convert LaTeX format dung inline formula", "AI convert LaTeX chua format dung inline formula") And $bOk
+        $bOk = _Assert($oMathInline.Font.Name = "Cambria Math" And $oMathInline.Font.Italic = True And $oMathInline.Font.Size = 12, "AI convert LaTeX format dung inline formula", "AI convert LaTeX chua format dung inline formula") And $bOk
     EndIf
 
     Local $oSentencePrefix = _FindTextRange("Inline math ")
@@ -107,7 +108,7 @@ Func _TestLaTeXAndEmoji()
     EndIf
     $bOk = _Assert(IsObj($oBlockFormula), "Tim duoc block formula de verify", "Khong tim thay block formula") And $bOk
     If IsObj($oBlockFormula) Then
-        $bOk = _Assert($oBlockFormula.Range.Font.Name = "Cambria Math" And $oBlockFormula.Format.Alignment = $WD_ALIGN_CENTER, "AI convert LaTeX format dung block formula", "AI convert LaTeX chua format dung block formula") And $bOk
+        $bOk = _Assert($oBlockFormula.Range.Font.Name = "Cambria Math" And $oBlockFormula.Range.Font.Size = 12 And $oBlockFormula.Format.Alignment = $WD_ALIGN_CENTER, "AI convert LaTeX format dung block formula", "AI convert LaTeX chua format dung block formula") And $bOk
     EndIf
 
     $g_oDoc.Close(0)

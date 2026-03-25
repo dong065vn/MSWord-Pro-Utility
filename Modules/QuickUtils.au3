@@ -615,3 +615,59 @@ Func _UnlinkAllFields()
     _UpdateProgress("Da chuyen " & $n & " field thanh text")
 EndFunc
 
+; ============================================
+; 11. HEADING NUMBER CLEANUP - Sua dau cham de muc
+; ============================================
+
+; Sua de muc dang "2.4. Tieu de" thanh "2.4 Tieu de"
+; Co the gioi han theo tien to, vi du "2." de chi sua chuong 2.
+Func _FixHeadingNumberDots()
+    If Not _CheckConnection() Then Return
+
+    Local $sPrefix = StringStripWS(GUICtrlRead($g_inputHeadingPrefixFix), 3)
+    Local $sSeparator = GUICtrlRead($g_inputHeadingSeparatorFix)
+    If $sSeparator = "" Then $sSeparator = " "
+
+    If $sPrefix <> "" And Not StringRegExp($sPrefix, "^\d+(?:\.\d+)*\.$") Then
+        MsgBox($MB_ICONWARNING, "Loi", "Tien to phai co dang 1. hoac 2.4.")
+        Return
+    EndIf
+
+    _UpdateProgress("Dang sua de muc so...")
+
+    Local $oParas = $g_oDoc.Paragraphs
+    Local $iFixed = 0
+
+    For $i = 1 To $oParas.Count
+        Local $oPara = $oParas.Item($i)
+        If Not IsObj($oPara) Then ContinueLoop
+
+        Local $sRawText = $oPara.Range.Text
+        If $sRawText = "" Then ContinueLoop
+
+        Local $sTrimmed = StringReplace($sRawText, @CR, "")
+        $sTrimmed = StringReplace($sTrimmed, @LF, "")
+        If $sTrimmed = "" Then ContinueLoop
+
+        Local $aMatch = StringRegExp($sTrimmed, "^(\s*)(\d+(?:\.\d+)*)\.(\s+)(.+)$", 1)
+        If @error Or UBound($aMatch) < 4 Then ContinueLoop
+
+        Local $sLeading = $aMatch[0]
+        Local $sNumber = $aMatch[1]
+        Local $sRest = $aMatch[3]
+        Local $sFullPrefix = $sNumber & "."
+
+        If $sPrefix <> "" And StringLeft($sFullPrefix, StringLen($sPrefix)) <> $sPrefix Then ContinueLoop
+
+        $oPara.Range.Text = $sLeading & $sNumber & $sSeparator & $sRest & @CR
+        $iFixed += 1
+    Next
+
+    _UpdateProgress("Da sua " & $iFixed & " de muc")
+    MsgBox($MB_ICONINFORMATION, "Hoan tat", _
+        "Da sua " & $iFixed & " de muc." & @CRLF & @CRLF & _
+        "Quy tac:" & @CRLF & _
+        "- ""2.4. Tieu de"" -> ""2.4 Tieu de""" & @CRLF & _
+        "- Neu nhap tien to ""2."" thi chi sua cac muc bat dau bang 2.")
+EndFunc
+

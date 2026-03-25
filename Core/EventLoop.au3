@@ -223,6 +223,8 @@ Func _MainLoop()
                 _SafeExecute("_HeadingToTOC")
             Case $g_btnListHeadings
                 _ListAllHeadings()
+            Case $g_btnScanThesisHeadings
+                _SafeExecute("_ScanAndApplyThesisHeadingStyles")
             Case $g_btnRemoveAllFormat
                 _SafeExecute("_RemoveAllFormatting")
             Case $g_btnConvertCase
@@ -301,6 +303,8 @@ Func _MainLoop()
                 _SafeExecute("_AI_FixAllThesis")
             Case $g_btnAILaTeX
                 _SafeExecute("_AI_ConvertLaTeX")
+            Case $g_btnAINormalizeMath
+                _SafeExecute("_AI_NormalizeAllMath")
             Case $g_btnAIRemoveEmoji
                 _SafeExecute("_AI_RemoveEmoji")
             Case $g_btnAIFixEncoding
@@ -397,6 +401,8 @@ Func _MainLoop()
                 _SafeExecute("_RemoveCommentsSelection")
             Case $g_btnUnlinkFields
                 _SafeExecute("_UnlinkAllFields")
+            Case $g_btnFixHeadingNumberDots
+                _SafeExecute("_FixHeadingNumberDots")
                 
             ; === TAB 8: SMART FIX ===
             Case $g_btnSmartAnalyze

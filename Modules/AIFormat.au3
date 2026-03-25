@@ -15,6 +15,10 @@ Global $AI_FONT_SIZE_H2 = 13
 Global $AI_FONT_SIZE_H3 = 13
 Global $AI_LINE_SPACING = 1.5
 Global $AI_FIRST_INDENT = 1.27 ; cm
+Global $AI_MATH_FONT_NAME = "Cambria Math"
+Global $AI_MATH_FONT_SIZE = 12
+Global $AI_MATH_SPACE_BEFORE = 6
+Global $AI_MATH_SPACE_AFTER = 6
 Global $AI_MARGIN_LEFT = 3    ; cm
 Global $AI_MARGIN_RIGHT = 2   ; cm
 Global $AI_MARGIN_TOP = 2     ; cm
@@ -38,6 +42,10 @@ Func _AI_LoadSettings()
     $AI_FONT_SIZE_H3 = Number(IniRead($AI_SETTINGS_FILE, "Format", "H3Size", $AI_FONT_SIZE_H3))
     $AI_LINE_SPACING = Number(IniRead($AI_SETTINGS_FILE, "Format", "LineSpacing", $AI_LINE_SPACING))
     $AI_FIRST_INDENT = Number(IniRead($AI_SETTINGS_FILE, "Format", "FirstIndent", $AI_FIRST_INDENT))
+    $AI_MATH_FONT_NAME = IniRead($AI_SETTINGS_FILE, "Format", "MathFontName", $AI_MATH_FONT_NAME)
+    $AI_MATH_FONT_SIZE = Number(IniRead($AI_SETTINGS_FILE, "Format", "MathFontSize", $AI_MATH_FONT_SIZE))
+    $AI_MATH_SPACE_BEFORE = Number(IniRead($AI_SETTINGS_FILE, "Format", "MathSpaceBefore", $AI_MATH_SPACE_BEFORE))
+    $AI_MATH_SPACE_AFTER = Number(IniRead($AI_SETTINGS_FILE, "Format", "MathSpaceAfter", $AI_MATH_SPACE_AFTER))
     $AI_MARGIN_LEFT = Number(IniRead($AI_SETTINGS_FILE, "Format", "MarginLeft", $AI_MARGIN_LEFT))
     $AI_MARGIN_RIGHT = Number(IniRead($AI_SETTINGS_FILE, "Format", "MarginRight", $AI_MARGIN_RIGHT))
     $AI_MARGIN_TOP = Number(IniRead($AI_SETTINGS_FILE, "Format", "MarginTop", $AI_MARGIN_TOP))
@@ -203,6 +211,10 @@ Func _AI_ShowSettings()
                 IniWrite($AI_SETTINGS_FILE, "Format", "H3Size", $AI_FONT_SIZE_H3)
                 IniWrite($AI_SETTINGS_FILE, "Format", "LineSpacing", $AI_LINE_SPACING)
                 IniWrite($AI_SETTINGS_FILE, "Format", "FirstIndent", $AI_FIRST_INDENT)
+                IniWrite($AI_SETTINGS_FILE, "Format", "MathFontName", $AI_MATH_FONT_NAME)
+                IniWrite($AI_SETTINGS_FILE, "Format", "MathFontSize", $AI_MATH_FONT_SIZE)
+                IniWrite($AI_SETTINGS_FILE, "Format", "MathSpaceBefore", $AI_MATH_SPACE_BEFORE)
+                IniWrite($AI_SETTINGS_FILE, "Format", "MathSpaceAfter", $AI_MATH_SPACE_AFTER)
                 IniWrite($AI_SETTINGS_FILE, "Format", "MarginLeft", $AI_MARGIN_LEFT)
                 IniWrite($AI_SETTINGS_FILE, "Format", "MarginRight", $AI_MARGIN_RIGHT)
                 IniWrite($AI_SETTINGS_FILE, "Format", "MarginTop", $AI_MARGIN_TOP)
@@ -498,6 +510,54 @@ Func _AI_ReplaceSmartQuotesInFind($oFind)
     EndIf
 EndFunc
 
+Func _AI_GetParagraphPlainText($oPara)
+    If Not IsObj($oPara) Then Return ""
+    Local $sText = $oPara.Range.Text
+    $sText = StringReplace($sText, @CR, "")
+    $sText = StringReplace($sText, @LF, "")
+    Return $sText
+EndFunc
+
+Func _AI_GetMarkdownHeadingLevel($sText)
+    If $sText = "" Then Return 0
+    Local $aMatch = StringRegExp($sText, "^\s*(#{1,6})\s*(.*?)\s*#*\s*$", 1)
+    If @error Or UBound($aMatch) < 2 Then Return 0
+    Local $iLevel = StringLen($aMatch[0])
+    If $iLevel > 4 Then $iLevel = 4
+    Return $iLevel
+EndFunc
+
+Func _AI_CleanMarkdownHeadingText($sText)
+    If $sText = "" Then Return ""
+    Local $aMatch = StringRegExp($sText, "^\s*#{1,6}\s*(.*?)\s*#*\s*$", 1)
+    If @error Or UBound($aMatch) = 0 Then Return $sText
+    Return StringStripWS($aMatch[0], 3)
+EndFunc
+
+Func _AI_IsMarkdownTableLine($sText)
+    If $sText = "" Then Return False
+    Local $sTrim = StringStripWS($sText, 3)
+    If $sTrim = "" Then Return False
+    If StringInStr($sTrim, "|") = 0 Then Return False
+
+    ; Bang Markdown hop le can co it nhat 2 cot, co the co/khong co | o dau/cuoi.
+    If StringRegExp($sTrim, "^\|?.+\|.+\|?$") Then Return True
+    Return False
+EndFunc
+
+Func _AI_IsMarkdownTableSeparator($sText)
+    Local $sTrim = StringStripWS($sText, 3)
+    If $sTrim = "" Then Return False
+    Return StringRegExp($sTrim, "^\|?[\s:\-]+\|[\s:\-\|]*\|?$")
+EndFunc
+
+Func _AI_ParseMarkdownTableRow($sRow)
+    Local $sTrim = StringStripWS($sRow, 3)
+    If StringLeft($sTrim, 1) = "|" Then $sTrim = StringTrimLeft($sTrim, 1)
+    If StringRight($sTrim, 1) = "|" Then $sTrim = StringTrimRight($sTrim, 1)
+    Return StringSplit($sTrim, "|")
+EndFunc
+
 ; ========================================
 ; MARKDOWN CLEANUP FUNCTIONS
 ; ========================================
@@ -510,42 +570,23 @@ Func _AI_ConvertHeadings()
     Local $oRange = _AI_GetRange()
     If Not IsObj($oRange) Then Return
 
-    Local $oFind, $iCount = 0
+    Local $iCount = 0
+    Local $oParas = $oRange.Paragraphs
 
-    ; H1: # text (chi 1 dau #)
-    ; Tim dong bat dau bang "# " (nhung khong phai "## ")
-    For $iLevel = 3 To 1 Step -1
-        Local $sPrefix = ""
-        For $j = 1 To $iLevel
-            $sPrefix &= "#"
-        Next
-        $sPrefix &= " "
+    For $i = 1 To $oParas.Count
+        Local $oPara = $oParas.Item($i)
+        If Not IsObj($oPara) Then ContinueLoop
 
-        Local $sStyleName = "Heading " & $iLevel
+        Local $sRawText = _AI_GetParagraphPlainText($oPara)
+        Local $iLevel = _AI_GetMarkdownHeadingLevel($sRawText)
+        If $iLevel = 0 Then ContinueLoop
 
-        ; Duyet tung paragraph
-        Local $oParas = $oRange.Paragraphs
-        For $i = 1 To $oParas.Count
-            Local $oPara = $oParas.Item($i)
-            If Not IsObj($oPara) Then ContinueLoop
+        Local $sClean = _AI_CleanMarkdownHeadingText($sRawText)
+        If $sClean = "" Then ContinueLoop
 
-            Local $sText = $oPara.Range.Text
-            $sText = StringStripWS($sText, 1) ; Strip leading
-
-            If StringLeft($sText, StringLen($sPrefix)) = $sPrefix Then
-                ; Xoa ky tu # va khoang trang
-                Local $oParaRange = $oPara.Range
-                ; Tim va xoa prefix
-                Local $oFindInPara = $oParaRange.Find
-                $oFindInPara.Text = $sPrefix
-                $oFindInPara.Replacement.Text = ""
-                _AI_ExecuteReplaceAll($oFindInPara)
-
-                ; Gan style
-                $oPara.Style = $sStyleName
-                $iCount += 1
-            EndIf
-        Next
+        $oPara.Range.Text = $sClean & @CR
+        $oPara.Style = "Heading " & $iLevel
+        $iCount += 1
     Next
 
     _UpdateProgress("Da chuyen " & $iCount & " Heading!")
@@ -836,7 +877,7 @@ Func _AI_ConvertBullets()
     Local $aRuns[1][2]
     Local $iRunCount = 0
     Local $iRunStart = 0, $iRunEnd = 0
-    ; Bullet characters: • (2022), ◦ (25E6), ▪ (25AA), ▸ (25B8), ● (25CF)
+    ; Bullet characters: • (2022), ◦ (25E6), ▪ (25AA), ▸ (25B8), ● (25CF), ► (25BA)
     Local $sBulletChars = ChrW(8226) & ChrW(9702) & ChrW(9642) & ChrW(9656) & ChrW(9679)
 
     For $i = 1 To $oParas.Count
@@ -846,9 +887,9 @@ Func _AI_ConvertBullets()
         Local $sText = $oPara.Range.Text
         Local $sStripped = StringStripWS($sText, 1) ; Strip leading whitespace
 
-        ; Kiem tra markdown bullet: - hoac *
-        If StringRegExp($sStripped, "^[-\*]\s") Then
-            Local $sClean = StringRegExpReplace($sText, "^[\s]*[-\*]\s+", "")
+        ; Kiem tra markdown bullet: -, *, +, va checkbox list
+        If StringRegExp($sStripped, "^[-\*\+]\s") Or StringRegExp($sStripped, "^[-\*\+]\s*\[[xX ]\]\s*") Then
+            Local $sClean = StringRegExpReplace($sText, "^[\s]*[-\*\+]\s*(\[[xX ]\]\s*)?", "")
             If StringRight($sText, 1) = Chr(13) And StringRight($sClean, 1) <> Chr(13) Then $sClean &= Chr(13)
             $oPara.Range.Text = $sClean
             _AI_AddListRun($aRuns, $iRunCount, $iRunStart, $iRunEnd, $i)
@@ -880,9 +921,9 @@ Func _AI_ConvertBullets()
         If StringLeft($sText, 1) = @TAB Then
             Local $sAfterTab = StringStripWS(StringTrimLeft($sText, 1), 1)
             Local $sFirstAfterTab = StringLeft($sAfterTab, 1)
-            If StringInStr($sBulletChars, $sFirstAfterTab) Or StringRegExp($sAfterTab, "^[-\*]\s") Then
+            If StringInStr($sBulletChars, $sFirstAfterTab) Or StringRegExp($sAfterTab, "^[-\*\+]\s") Or StringRegExp($sAfterTab, "^[-\*\+]\s*\[[xX ]\]\s*") Then
                 ; Xoa tab + bullet
-                Local $sClean3 = StringRegExpReplace($sAfterTab, "^[" & $sBulletChars & "\-\*]\s*", "")
+                Local $sClean3 = StringRegExpReplace($sAfterTab, "^[" & $sBulletChars & "\-\*\+]\s*(\[[xX ]\]\s*)?", "")
                 If StringRight($sText, 1) = Chr(13) And StringRight($sClean3, 1) <> Chr(13) Then $sClean3 &= Chr(13)
                 $oPara.Range.Text = $sClean3
                 _AI_AddListRun($aRuns, $iRunCount, $iRunStart, $iRunEnd, $i)
@@ -919,10 +960,10 @@ Func _AI_ConvertNumberedLists()
 
         Local $sText = $oPara.Range.Text
         ; Tim dong bat dau bang "1. " hoac "2. " v.v.
-        If StringRegExp($sText, "^[\s]*\d+[\.\)]\s") Then
+        If StringRegExp($sText, "^[\s]*\d+[\.\)]\s") Or StringRegExp($sText, "^[\s]*\d+\s*[-:]\s+") Then
             ; Xoa so thu tu dau dong
             Local $oParaRange = $oPara.Range
-            Local $sClean = StringRegExpReplace($sText, "^[\s]*\d+[\.\)]\s+", "")
+            Local $sClean = StringRegExpReplace($sText, "^[\s]*\d+([\.\)]|[\s]*[-:])\s+", "")
             If StringRight($sText, 1) = Chr(13) And StringRight($sClean, 1) <> Chr(13) Then $sClean &= Chr(13)
             $oParaRange.Text = $sClean
 
@@ -966,13 +1007,13 @@ Func _AI_ConvertTables()
     Local $i = $iParaCount
     While $i >= 1
         Local $sText = $aParas[$i][2]
-        If StringLeft($sText, 1) = "|" And StringRight($sText, 1) = "|" Then
+        If _AI_IsMarkdownTableLine($sText) Then
             Local $iBlockEnd = $i
             Local $iBlockStart = $i
 
             While $iBlockStart > 1
                 Local $sPrev = $aParas[$iBlockStart - 1][2]
-                If StringLeft($sPrev, 1) = "|" And StringRight($sPrev, 1) = "|" Then
+                If _AI_IsMarkdownTableLine($sPrev) Then
                     $iBlockStart -= 1
                 Else
                     ExitLoop
@@ -982,13 +1023,13 @@ Func _AI_ConvertTables()
             Local $aTableRows[1] = [0]
             For $r = $iBlockStart To $iBlockEnd
                 Local $sRow = $aParas[$r][2]
-                If StringRegExp($sRow, "^\|[\s\-\|:]+\|$") Then ContinueLoop
+                If _AI_IsMarkdownTableSeparator($sRow) Then ContinueLoop
                 $aTableRows[0] += 1
                 ReDim $aTableRows[$aTableRows[0] + 1]
                 $aTableRows[$aTableRows[0]] = $sRow
             Next
 
-            If $aTableRows[0] > 0 Then
+            If $aTableRows[0] >= 2 Then
                 Local $iInsertStart = $aParas[$iBlockStart][0]
                 Local $iDeleteEnd = $aParas[$iBlockEnd][1]
                 Local $oDeleteRange = $g_oDoc.Range($iInsertStart, $iDeleteEnd)
@@ -1014,7 +1055,7 @@ Func _AI_CreateWordTable($aRows, $oInsertPara)
     If $aRows[0] < 1 Or Not IsObj($oInsertPara) Then Return
 
     ; Dem so cot tu dong dau
-    Local $aCols = StringSplit(StringMid($aRows[1], 2, StringLen($aRows[1]) - 2), "|")
+    Local $aCols = _AI_ParseMarkdownTableRow($aRows[1])
     Local $iCols = $aCols[0]
     Local $iRows = $aRows[0]
 
@@ -1035,7 +1076,7 @@ EndFunc
 Func _AI_CreateWordTableAtRange($aRows, $oTableRange)
     If $aRows[0] < 1 Or Not IsObj($oTableRange) Then Return
 
-    Local $aCols = StringSplit(StringMid($aRows[1], 2, StringLen($aRows[1]) - 2), "|")
+    Local $aCols = _AI_ParseMarkdownTableRow($aRows[1])
     Local $iCols = $aCols[0]
     Local $iRows = $aRows[0]
 
@@ -1044,7 +1085,7 @@ Func _AI_CreateWordTableAtRange($aRows, $oTableRange)
 
     ; Dien du lieu
     For $r = 1 To $iRows
-        Local $aCells = StringSplit(StringMid($aRows[$r], 2, StringLen($aRows[$r]) - 2), "|")
+        Local $aCells = _AI_ParseMarkdownTableRow($aRows[$r])
         For $c = 1 To $iCols
             If $c <= $aCells[0] Then
                 $oTable.Cell($r, $c).Range.Text = StringStripWS($aCells[$c], 3)
@@ -1162,7 +1203,8 @@ Func _AI_CleanAllMarkdown()
         "5. `code` -> Inline code" & @CRLF & _
         "6. - items -> Bullet list" & @CRLF & _
         "7. 1. items -> Numbered list" & @CRLF & _
-        "8. [text](url) -> text" & @CRLF & @CRLF & _
+        "8. [text](url) -> text" & @CRLF & _
+        "9. Markdown table -> Word table" & @CRLF & @CRLF & _
         "LUU Y: Nen Backup truoc!") <> $IDYES Then Return
 
     _UpdateProgress("Dang xu ly tat ca Markdown...")
@@ -1176,6 +1218,7 @@ Func _AI_CleanAllMarkdown()
     _AI_ConvertLinks()
     _AI_ConvertBullets()
     _AI_ConvertNumberedLists()
+    _AI_ConvertTables()
 
     _UpdateProgress("Da xu ly tat ca Markdown!")
     MsgBox($MB_ICONINFORMATION, "Hoan tat", "Da xoa va chuyen doi tat ca Markdown!")
@@ -1326,11 +1369,15 @@ Func _AI_FixVietnamesePunctuation()
     If Not IsObj($oRange) Then Return
 
     ; 1. Khong co khoang trang truoc dau cham, phay, hai cham
-    Local $aPatterns[4][2] = [ _
+    Local $aPatterns[8][2] = [ _
         [" .", "."], _
         [" ,", ","], _
         [" :", ":"], _
-        [" ;", ";"] _
+        [" ;", ";"], _
+        [" !", "!"], _
+        [" ?", "?"], _
+        ["( ", "("], _
+        [" )", ")"] _
     ]
 
     For $p = 0 To UBound($aPatterns) - 1
@@ -1340,6 +1387,25 @@ Func _AI_FixVietnamesePunctuation()
         $oFind.Text = $aPatterns[$p][0]
         $oFind.Replacement.Text = $aPatterns[$p][1]
         _AI_ExecuteReplaceAll($oFind)
+    Next
+
+    ; Chuan hoa 1 khoang trang sau dau cau khi di sau la chu/so
+    Local $aWildcards[5][2] = [ _
+        ["([\,\.\:\;\!\?])([A-Za-z0-9" & ChrW(192) & "-" & ChrW(7929) & "])", "\1 \2"], _
+        ["([\,\.\:\;\!\?])[ ]{2,}", "\1 "], _
+        ["([\(])([ ]+)", "("], _
+        ["([ ]+)([\)])", ")"], _
+        ["([^\r\n ])([\(\[])", "\1 \2"] _
+    ]
+
+    For $w = 0 To UBound($aWildcards) - 1
+        Local $oFindW = _AI_GetRange().Find
+        $oFindW.ClearFormatting()
+        $oFindW.Replacement.ClearFormatting()
+        $oFindW.Text = $aWildcards[$w][0]
+        $oFindW.Replacement.Text = $aWildcards[$w][1]
+        $oFindW.MatchWildcards = True
+        _AI_ExecuteReplaceAll($oFindW)
     Next
 
     _UpdateProgress("Da fix dau cau VN!")
@@ -1397,6 +1463,7 @@ Func _AI_FixAllThesis()
         "5. Thut dau dong: " & $AI_FIRST_INDENT & "cm" & @CRLF & _
         "6. Fix khoang trang, dau cau, dong trong" & @CRLF & _
         "7. Lam dep van ban" & @CRLF & @CRLF & _
+        "KHONG bao gom cong thuc toan hoc." & @CRLF & @CRLF & _
         "LUU Y: Nen Backup truoc! Tiep tuc?") <> $IDYES Then Return
 
     _UpdateProgress("DANG CHUAN HOA DO AN...")
@@ -1415,6 +1482,7 @@ Func _AI_FixAllThesis()
     _AI_ConvertLinks()
     _AI_ConvertBullets()
     _AI_ConvertNumberedLists()
+    _AI_ConvertTables()
 
     ; Buoc 2: Chuan hoa format
     _UpdateProgress("[2/7] Ap dung font...")
@@ -1447,7 +1515,8 @@ Func _AI_FixAllThesis()
         "- Code block dung font?" & @CRLF & _
         "- Margins, line spacing dung?" & @CRLF & _
         "- Bullet list dep?" & @CRLF & _
-        "- Dau cau hop ly?")
+        "- Dau cau hop ly?" & @CRLF & _
+        "- Cong thuc neu can thi dung nut Chuan cong thuc rieng")
 EndFunc
 
 ; ========================================
@@ -1697,6 +1766,164 @@ Func _AI_FindSingleDollar($sText, $iStartPos)
     Return 0
 EndFunc
 
+Func _AI_IsStandaloneMathParagraph($oMathRange)
+    If Not IsObj($oMathRange) Then Return False
+    Local $oPara = $oMathRange.Paragraphs.Item(1)
+    If Not IsObj($oPara) Then Return False
+
+    Local $sPara = _AI_NormalizeMathContextText($oPara.Range.Text)
+    Local $sMath = _AI_NormalizeMathContextText($oMathRange.Text)
+    If $sMath = "" Then Return False
+
+    If $sPara = $sMath Then Return True
+    If StringRegExp($sPara, "^[\(\[\{]?\s*" & _AI_EscapeRegExp($sMath) & "\s*[\)\]\}]?$") Then Return True
+    Return False
+EndFunc
+
+Func _AI_ApplyMathParagraphFormat($oPara, $bDisplayMath = True)
+    If Not IsObj($oPara) Then Return
+    $oPara.Format.FirstLineIndent = 0
+    $oPara.Format.LeftIndent = 0
+    $oPara.Format.RightIndent = 0
+    $oPara.Format.SpaceBefore = $AI_MATH_SPACE_BEFORE
+    $oPara.Format.SpaceAfter = $AI_MATH_SPACE_AFTER
+    $oPara.Format.LineSpacingRule = $WD_LINE_SPACE_MULTIPLE
+    $oPara.Format.LineSpacing = $AI_LINE_SPACING * 12
+    If $bDisplayMath Then
+        $oPara.Format.Alignment = $WD_ALIGN_CENTER
+    Else
+        $oPara.Format.Alignment = $WD_ALIGN_LEFT
+    EndIf
+EndFunc
+
+Func _AI_IsMathProgId($sProgId)
+    If $sProgId = "" Then Return False
+    If StringInStr($sProgId, "MathType") > 0 Then Return True
+    If StringInStr($sProgId, "Equation") > 0 Then Return True
+    Return False
+EndFunc
+
+Func _AI_NormalizeMathContextText($sText)
+    $sText = StringReplace($sText, Chr(1), "")
+    $sText = StringReplace($sText, @CR, "")
+    $sText = StringReplace($sText, @LF, "")
+    $sText = StringReplace($sText, ChrW(160), " ")
+    $sText = StringRegExpReplace($sText, "\s+", " ")
+    Return StringStripWS($sText, 3)
+EndFunc
+
+Func _AI_EscapeRegExp($sText)
+    Return StringRegExpReplace($sText, "([\\\^\$\.\|\?\*\+\(\)\[\]\{\}])", "\\$1")
+EndFunc
+
+Func _AI_RangeOverlaps($oScopeRange, $iStart, $iEnd)
+    If Not IsObj($oScopeRange) Then Return True
+    Return ($iStart < $oScopeRange.End And $iEnd > $oScopeRange.Start)
+EndFunc
+
+Func _AI_IsParagraphWithinScope($oScopeRange, $oPara)
+    If Not IsObj($oPara) Then Return False
+    If Not IsObj($oScopeRange) Then Return True
+    Return _AI_RangeOverlaps($oScopeRange, $oPara.Range.Start, $oPara.Range.End)
+EndFunc
+
+Func _AI_NormalizeAllMath($bShowSummary = True)
+    If Not _CheckConnection() Then Return
+    _UpdateProgress("Dang chuan hoa cong thuc...")
+
+    Local $oScopeRange = _AI_GetRange()
+    If Not IsObj($oScopeRange) Then Return
+
+    Local $iOMath = 0, $iMathType = 0
+    Local $oHandledParas = ObjCreate("Scripting.Dictionary")
+
+    ; 1. Chuan hoa Word OMath/Equation
+    Local $oOMaths = $g_oDoc.OMaths
+    If IsObj($oOMaths) Then
+        For $i = 1 To $oOMaths.Count
+            Local $oMath = $oOMaths.Item($i)
+            If Not IsObj($oMath) Then ContinueLoop
+
+            Local $oMathRange = $oMath.Range
+            If Not IsObj($oMathRange) Then ContinueLoop
+            If Not _AI_RangeOverlaps($oScopeRange, $oMathRange.Start, $oMathRange.End) Then ContinueLoop
+
+            ; Dua ve dang Professional neu Word cho phep
+            $oMath.BuildUp()
+            $oMathRange.Font.Name = $AI_MATH_FONT_NAME
+            If $AI_MATH_FONT_SIZE > 0 Then $oMathRange.Font.Size = $AI_MATH_FONT_SIZE
+
+            Local $oPara = $oMathRange.Paragraphs.Item(1)
+            If IsObj($oPara) Then
+                _AI_ApplyMathParagraphFormat($oPara, _AI_IsStandaloneMathParagraph($oMathRange))
+            EndIf
+            $iOMath += 1
+        Next
+    EndIf
+
+    ; 2. Chuan hoa doi tuong kieu MathType / Equation OLE (best effort)
+    Local $oInlineShapes = $g_oDoc.InlineShapes
+    If IsObj($oInlineShapes) Then
+        For $i = 1 To $oInlineShapes.Count
+            Local $oShape = $oInlineShapes.Item($i)
+            If Not IsObj($oShape) Then ContinueLoop
+            Local $sProgId = ""
+            $sProgId = $oShape.OLEFormat.ProgID
+            If @error Then
+                ContinueLoop
+            EndIf
+
+            If _AI_IsMathProgId($sProgId) Then
+                Local $oPara = $oShape.Range.Paragraphs.Item(1)
+                If IsObj($oPara) And _AI_IsParagraphWithinScope($oScopeRange, $oPara) Then
+                    _AI_ApplyMathParagraphFormat($oPara, _AI_NormalizeMathContextText($oPara.Range.Text) = "")
+                    $iMathType += 1
+                EndIf
+            EndIf
+        Next
+    EndIf
+
+    Local $oShapes = $g_oDoc.Shapes
+    If IsObj($oShapes) Then
+        For $i = 1 To $oShapes.Count
+            Local $oShape2 = $oShapes.Item($i)
+            If Not IsObj($oShape2) Then ContinueLoop
+            Local $sProgId2 = ""
+            $sProgId2 = $oShape2.OLEFormat.ProgID
+            If @error Then
+                ContinueLoop
+            EndIf
+
+            If _AI_IsMathProgId($sProgId2) Then
+                Local $oAnchorPara = $oShape2.Anchor.Paragraphs.Item(1)
+                If IsObj($oAnchorPara) And _AI_IsParagraphWithinScope($oScopeRange, $oAnchorPara) Then
+                    Local $sParaKey = String($oAnchorPara.Range.Start) & ":" & String($oAnchorPara.Range.End)
+                    If Not $oHandledParas.Exists($sParaKey) Then
+                        _AI_ApplyMathParagraphFormat($oAnchorPara, _AI_NormalizeMathContextText($oAnchorPara.Range.Text) = "")
+                        $oHandledParas.Add($sParaKey, True)
+                        $iMathType += 1
+                    EndIf
+                EndIf
+            EndIf
+        Next
+    EndIf
+
+    _UpdateProgress("Da chuan hoa " & $iOMath & " equation va " & $iMathType & " doi tuong MathType/Equation")
+    If $bShowSummary Then
+        MsgBox($MB_ICONINFORMATION, "Chuan cong thuc", _
+            "Da chuan hoa cong thuc thanh cong." & @CRLF & @CRLF & _
+            "Word Equation (OMath): " & $iOMath & @CRLF & _
+            "MathType/Equation object: " & $iMathType & @CRLF & @CRLF & _
+            "Chuan dang ap dung:" & @CRLF & _
+            "- Font math: " & $AI_MATH_FONT_NAME & @CRLF & _
+            "- Co chu: " & $AI_MATH_FONT_SIZE & "pt" & @CRLF & _
+            "- Cong thuc rieng dong: canh giua" & @CRLF & _
+            "- Cong thuc inline: giu trong dong, bo thut dau dong" & @CRLF & _
+            "- Ho tro Word Equation va MathType/Equation object dang co san" & @CRLF & _
+            "- Luu y: khong chuyen OMath thanh MathType that neu may khong co MathType")
+    EndIf
+EndFunc
+
 ; Xoa Emoji
 Func _AI_RemoveEmoji()
     If Not _CheckConnection() Then Return
@@ -1769,7 +1996,8 @@ Func _AI_PreviewChanges()
     Local $oRange = _AI_GetRange()
     If Not IsObj($oRange) Then Return
 
-    Local $sText = StringLeft($oRange.Text, 500) ; Lay 500 ky tu dau
+    Local $sWholeText = $oRange.Text
+    Local $sText = StringLeft($sWholeText, 1000)
     Local $sMsg = "PREVIEW NOI DUNG:" & @CRLF & @CRLF
     $sMsg &= "Font: " & $oRange.Font.Name & " " & $oRange.Font.Size & "pt" & @CRLF
 
@@ -1779,24 +2007,40 @@ Func _AI_PreviewChanges()
 
     ; Dem markdown patterns
     Local $iHeadings = 0
-    Local $aH = StringRegExp($sText, "(?m)^#{1,6}\s+[^\r\n]+", 3)
+    Local $aH = StringRegExp($sWholeText, "(?m)^\s*#{1,6}\s*[^\r\n]+", 3)
     If Not @error Then $iHeadings = UBound($aH)
     Local $iBold = 0
-    Local $aB = StringRegExp($sText, "\*\*[^\*]+\*\*", 3)
+    Local $aB = StringRegExp($sWholeText, "(\*\*|__)[^\r\n]+?\1", 3)
     If Not @error Then $iBold = UBound($aB)
+    Local $iItalic = 0
+    Local $aI = StringRegExp($sWholeText, "(?m)(?<!\*)\*[^\r\n\*]+\*(?!\*)|_[^\r\n_]+_", 3)
+    If Not @error Then $iItalic = UBound($aI)
     Local $iCode = 0
-    Local $aC = StringRegExp($sText, "```", 3)
+    Local $aC = StringRegExp($sWholeText, "```", 3)
     If Not @error Then $iCode = UBound($aC)
     Local $iLinks = 0
-    Local $aL = StringRegExp($sText, "\[[^\]]+\]\([^\)]+\)", 3)
+    Local $aL = StringRegExp($sWholeText, "!?\\[[^\\]]+\\]\\([^\\)]+\\)", 3)
     If Not @error Then $iLinks = UBound($aL)
+    Local $iBullets = 0
+    Local $aBullet = StringRegExp($sWholeText, "(?m)^\s*([\-\\*\\+]|[" & ChrW(8226) & ChrW(9702) & ChrW(9642) & ChrW(9656) & ChrW(9679) & "])\s+.+$", 3)
+    If Not @error Then $iBullets = UBound($aBullet)
+    Local $iNumbers = 0
+    Local $aNum = StringRegExp($sWholeText, "(?m)^\s*\d+(\.|\)|\s*[:-])\s+.+$", 3)
+    If Not @error Then $iNumbers = UBound($aNum)
+    Local $iTables = 0
+    Local $aTable = StringRegExp($sWholeText, "(?m)^\s*\|?.+\|.+\|?\s*$", 3)
+    If Not @error Then $iTables = UBound($aTable)
 
     $sMsg &= @CRLF & "MARKDOWN TIM THAY:" & @CRLF
     $sMsg &= "Headings (##): ~" & $iHeadings & @CRLF
     $sMsg &= "Bold (**): ~" & $iBold & @CRLF
+    $sMsg &= "Italic (*): ~" & $iItalic & @CRLF
     $sMsg &= "Code blocks (```): ~" & Int($iCode / 2) & @CRLF
     $sMsg &= "Links [...]: ~" & $iLinks & @CRLF
-    $sMsg &= @CRLF & "NOI DUNG (500 ky tu dau):" & @CRLF & @CRLF
+    $sMsg &= "Bullets: ~" & $iBullets & @CRLF
+    $sMsg &= "Numbered lists: ~" & $iNumbers & @CRLF
+    $sMsg &= "Table lines: ~" & $iTables & @CRLF
+    $sMsg &= @CRLF & "NOI DUNG (1000 ky tu dau):" & @CRLF & @CRLF
     $sMsg &= $sText
 
     _LogPreview($sMsg)

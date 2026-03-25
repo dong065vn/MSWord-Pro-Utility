@@ -301,6 +301,294 @@ Func _ExportToPDF()
     MsgBox($MB_ICONINFORMATION, "Thanh cong", "Da xuat: " & $sPath)
 EndFunc
 
+Func _ScanAndApplyThesisHeadingStyles()
+    If Not _CheckConnection() Then Return
+
+    Local $aMatches = _ScanThesisHeadingParagraphs()
+    If @error Or Not IsArray($aMatches) Then
+        MsgBox($MB_ICONWARNING, "Thong bao", "Khong quet duoc danh sach de muc.")
+        Return
+    EndIf
+
+    Local $aCounts[5] = [0, 0, 0, 0, 0]
+    For $i = 1 To UBound($aMatches) - 1
+        Local $iLevel = $aMatches[$i][0]
+        If $iLevel >= 1 And $iLevel <= 4 Then $aCounts[$iLevel] += 1
+    Next
+
+    If $aCounts[1] + $aCounts[2] + $aCounts[3] + $aCounts[4] = 0 Then
+        MsgBox($MB_ICONINFORMATION, "Khong tim thay", _
+            "Khong tim thay chuong/de muc theo mau do an." & @CRLF & @CRLF & _
+            "Mau dang duoc quet:" & @CRLF & _
+            "- CHUONG 1 / Chuong 1" & @CRLF & _
+            "- 1 Tieu de / 1. Tieu de" & @CRLF & _
+            "- 1.1 Tieu de" & @CRLF & _
+            "- 1.1.1 Tieu de" & @CRLF & _
+            "- 1.1.1.1 Tieu de")
+        Return
+    EndIf
+
+    _ShowThesisHeadingStyleDialog($aMatches, $aCounts)
+EndFunc
+
+Func _ScanThesisHeadingParagraphs()
+    Local $oParas = $g_oDoc.Paragraphs
+    If Not IsObj($oParas) Then Return SetError(1, 0, 0)
+
+    Local $aFound[1][4]
+    Local $iFound = 0
+
+    For $i = 1 To $oParas.Count
+        Local $oPara = $oParas.Item($i)
+        If Not IsObj($oPara) Then ContinueLoop
+
+        Local $sText = StringReplace($oPara.Range.Text, @CR, "")
+        $sText = StringReplace($sText, @LF, "")
+        $sText = StringStripWS($sText, 3)
+        If $sText = "" Then ContinueLoop
+
+        Local $iLevel = _DetectThesisHeadingLevel($sText)
+        If $iLevel = 0 Then ContinueLoop
+
+        $iFound += 1
+        ReDim $aFound[$iFound + 1][4]
+        $aFound[$iFound][0] = $iLevel
+        $aFound[$iFound][1] = $i
+        $aFound[$iFound][2] = $sText
+        $aFound[$iFound][3] = ""
+    Next
+
+    Return $aFound
+EndFunc
+
+Func _DetectThesisHeadingLevel($sText)
+    If StringRegExp($sText, "^(CHUONG|Chuong|CHƯƠNG|Chương)\s+[IVXLC0-9]+\b") Then Return 1
+    If StringRegExp($sText, "^\d+\.?\s+\S+") Then Return 1
+    If StringRegExp($sText, "^\d+\.\d+\.?\s+\S+") Then Return 2
+    If StringRegExp($sText, "^\d+\.\d+\.\d+\.?\s+\S+") Then Return 3
+    If StringRegExp($sText, "^\d+\.\d+\.\d+\.\d+\.?\s+\S+") Then Return 4
+    Return 0
+EndFunc
+
+Func _GetParagraphStylesData()
+    Return _GetParagraphStylesDataFromDoc($g_oDoc)
+EndFunc
+
+Func _GetParagraphStylesDataFromDoc($oDocSource)
+    If Not IsObj($oDocSource) Then Return ""
+
+    Local $oStyles = $oDocSource.Styles
+    If Not IsObj($oStyles) Then Return ""
+
+    Local $sData = ""
+    For $i = 1 To $oStyles.Count
+        Local $oStyle = $oStyles.Item($i)
+        If Not IsObj($oStyle) Then ContinueLoop
+        If $oStyle.Type <> $wdStyleTypeParagraph Then ContinueLoop
+
+        Local $sName = $oStyle.NameLocal
+        If $sName = "" Then ContinueLoop
+        If StringLeft($sName, 1) = "_" Then ContinueLoop
+        If StringInStr($sData, "|" & $sName & "|") > 0 Then ContinueLoop
+        $sData &= $sName & "|"
+    Next
+
+    If $sData = "" Then Return ""
+    Return StringTrimRight($sData, 1)
+EndFunc
+
+Func _GetOpenWordDocsListData($bIncludeCurrent = True)
+    If Not IsObj($g_oWord) Then Return ""
+    If $g_oWord.Documents.Count = 0 Then Return ""
+
+    Local $sData = ""
+    If $bIncludeCurrent Then $sData = "Chinh van ban dang sua|"
+
+    For $i = 1 To $g_oWord.Documents.Count
+        Local $oDocItem = $g_oWord.Documents.Item($i)
+        If Not IsObj($oDocItem) Then ContinueLoop
+        $sData &= $i & ". " & $oDocItem.Name & "|"
+    Next
+
+    If StringRight($sData, 1) = "|" Then $sData = StringTrimRight($sData, 1)
+    Return $sData
+EndFunc
+
+Func _GetStyleSourceDocFromSelection($sSelection)
+    If $sSelection = "" Or $sSelection = "Chinh van ban dang sua" Then Return $g_oDoc
+    If Not IsObj($g_oWord) Then Return 0
+
+    Local $iDotPos = StringInStr($sSelection, ".")
+    If $iDotPos = 0 Then Return 0
+
+    Local $iIndex = Int(StringLeft($sSelection, $iDotPos - 1))
+    If $iIndex < 1 Or $iIndex > $g_oWord.Documents.Count Then Return 0
+    Return $g_oWord.Documents.Item($iIndex)
+EndFunc
+
+Func _ResolvePreferredStyleName($sStyles, $sPreferred, $sFallback = "")
+    Local $sWrapped = "|" & $sStyles & "|"
+    If $sPreferred <> "" And StringInStr($sWrapped, "|" & $sPreferred & "|") > 0 Then Return $sPreferred
+    If $sFallback <> "" And StringInStr($sWrapped, "|" & $sFallback & "|") > 0 Then Return $sFallback
+
+    Local $aStyles = StringSplit($sStyles, "|", 2)
+    If IsArray($aStyles) And UBound($aStyles) > 0 Then Return $aStyles[0]
+    Return ""
+EndFunc
+
+Func _ShowThesisHeadingStyleDialog(ByRef $aMatches, ByRef $aCounts)
+    Local $sDocList = _GetOpenWordDocsListData(True)
+    If $sDocList = "" Then
+        MsgBox($MB_ICONWARNING, "Khong co file", "Khong lay duoc danh sach file Word dang mo.")
+        Return
+    EndIf
+
+    Local $oStyleSourceDoc = $g_oDoc
+    Local $sStyles = _GetParagraphStylesDataFromDoc($oStyleSourceDoc)
+    If $sStyles = "" Then
+        MsgBox($MB_ICONWARNING, "Khong co style", "Khong doc duoc danh sach style doan van trong van ban hien tai.")
+        Return
+    EndIf
+
+    Local $hPopup = GUICreate("Quet de muc do an va chon style", 720, 470, -1, -1, _
+        BitOR($WS_POPUP, $WS_CAPTION, $WS_SYSMENU))
+    GUISetBkColor(0xF7F9FB, $hPopup)
+
+    GUICtrlCreateLabel("Da quet thay cac de muc sau. Chon style co san cho tung cap truoc khi ap dung:", 20, 15, 670, 20)
+    GUICtrlSetFont(-1, 9, 600)
+
+    GUICtrlCreateLabel("Nguon style:", 30, 48, 90, 20)
+    Local $cboStyleSource = GUICtrlCreateCombo("", 120, 43, 360, 24, $CBS_DROPDOWNLIST)
+    GUICtrlSetData($cboStyleSource, $sDocList, "Chinh van ban dang sua")
+    Local $btnRefreshSource = GUICtrlCreateButton("Lam moi", 490, 42, 80, 26)
+    Local $lblSourceHint = GUICtrlCreateLabel("Mac dinh lay style tu chinh file dang sua. Co the doi sang file nguon dang mo.", 30, 73, 620, 18)
+    GUICtrlSetColor($lblSourceHint, 0x555555)
+
+    GUICtrlCreateLabel("Cap chuong / muc 1: " & $aCounts[1] & " dong", 30, 108, 220, 20)
+    Local $cboL1 = GUICtrlCreateCombo("", 260, 103, 220, 24, $CBS_DROPDOWNLIST)
+
+    GUICtrlCreateLabel("Cap 1.1: " & $aCounts[2] & " dong", 30, 148, 220, 20)
+    Local $cboL2 = GUICtrlCreateCombo("", 260, 143, 220, 24, $CBS_DROPDOWNLIST)
+
+    GUICtrlCreateLabel("Cap 1.1.1: " & $aCounts[3] & " dong", 30, 188, 220, 20)
+    Local $cboL3 = GUICtrlCreateCombo("", 260, 183, 220, 24, $CBS_DROPDOWNLIST)
+
+    GUICtrlCreateLabel("Cap 1.1.1.1: " & $aCounts[4] & " dong", 30, 228, 220, 20)
+    Local $cboL4 = GUICtrlCreateCombo("", 260, 223, 220, 24, $CBS_DROPDOWNLIST)
+
+    _RefreshThesisStyleCombos($cboL1, $cboL2, $cboL3, $cboL4, $sStyles)
+
+    GUICtrlCreateLabel("Xem nhanh 12 dong dau tien duoc nhan dien:", 20, 270, 260, 20)
+    Local $sPreview = ""
+    Local $iLimit = UBound($aMatches) - 1
+    If $iLimit > 12 Then $iLimit = 12
+    For $i = 1 To $iLimit
+        $sPreview &= "[" & $aMatches[$i][0] & "] " & $aMatches[$i][2] & @CRLF
+    Next
+    GUICtrlCreateEdit($sPreview, 20, 295, 675, 105, BitOR($ES_READONLY, $WS_VSCROLL))
+
+    Local $btnApply = GUICtrlCreateButton("Ap dung hang loat", 405, 415, 140, 34, $BS_DEFPUSHBUTTON)
+    GUICtrlSetBkColor($btnApply, 0x27AE60)
+    Local $btnCancel = GUICtrlCreateButton("Dong", 555, 415, 140, 34)
+
+    GUISetState(@SW_SHOW, $hPopup)
+
+    While 1
+        Local $iMsg = GUIGetMsg()
+        Switch $iMsg
+            Case $GUI_EVENT_CLOSE, $btnCancel
+                GUIDelete($hPopup)
+                Return
+            Case $cboStyleSource, $btnRefreshSource
+                If $iMsg = $btnRefreshSource Then
+                    Local $sCurrentSelection = GUICtrlRead($cboStyleSource)
+                    $sDocList = _GetOpenWordDocsListData(True)
+                    GUICtrlSetData($cboStyleSource, "", "")
+                    GUICtrlSetData($cboStyleSource, $sDocList, $sCurrentSelection)
+                    If GUICtrlRead($cboStyleSource) = "" Then GUICtrlSetData($cboStyleSource, $sDocList, "Chinh van ban dang sua")
+                EndIf
+
+                $oStyleSourceDoc = _GetStyleSourceDocFromSelection(GUICtrlRead($cboStyleSource))
+                If Not IsObj($oStyleSourceDoc) Then
+                    MsgBox($MB_ICONWARNING, "Loi", "Khong mo duoc file nguon style.")
+                    ContinueLoop
+                EndIf
+
+                $sStyles = _GetParagraphStylesDataFromDoc($oStyleSourceDoc)
+                If $sStyles = "" Then
+                    MsgBox($MB_ICONWARNING, "Khong co style", "File nguon khong doc duoc danh sach style doan van.")
+                    ContinueLoop
+                EndIf
+
+                _RefreshThesisStyleCombos($cboL1, $cboL2, $cboL3, $cboL4, $sStyles)
+            Case $btnApply
+                Local $aStyleMap[5]
+                $aStyleMap[1] = GUICtrlRead($cboL1)
+                $aStyleMap[2] = GUICtrlRead($cboL2)
+                $aStyleMap[3] = GUICtrlRead($cboL3)
+                $aStyleMap[4] = GUICtrlRead($cboL4)
+
+                If $aStyleMap[1] = "" Or $aStyleMap[2] = "" Or $aStyleMap[3] = "" Or $aStyleMap[4] = "" Then
+                    MsgBox($MB_ICONWARNING, "Chua chon du", "Vui long chon style cho tat ca cac cap.")
+                    ContinueLoop
+                EndIf
+
+                GUIDelete($hPopup)
+                _ApplyDetectedThesisHeadingStyles($aMatches, $aStyleMap)
+                Return
+        EndSwitch
+    WEnd
+EndFunc
+
+Func _RefreshThesisStyleCombos($cboL1, $cboL2, $cboL3, $cboL4, $sStyles)
+    Local $sDefaultL1 = _ResolvePreferredStyleName($sStyles, "Heading 1")
+    Local $sDefaultL2 = _ResolvePreferredStyleName($sStyles, "Heading 2", $sDefaultL1)
+    Local $sDefaultL3 = _ResolvePreferredStyleName($sStyles, "Heading 3", $sDefaultL2)
+    Local $sDefaultL4 = _ResolvePreferredStyleName($sStyles, "Heading 4", $sDefaultL3)
+
+    GUICtrlSetData($cboL1, "", "")
+    GUICtrlSetData($cboL2, "", "")
+    GUICtrlSetData($cboL3, "", "")
+    GUICtrlSetData($cboL4, "", "")
+
+    GUICtrlSetData($cboL1, $sStyles, $sDefaultL1)
+    GUICtrlSetData($cboL2, $sStyles, $sDefaultL2)
+    GUICtrlSetData($cboL3, $sStyles, $sDefaultL3)
+    GUICtrlSetData($cboL4, $sStyles, $sDefaultL4)
+EndFunc
+
+Func _ApplyDetectedThesisHeadingStyles(ByRef $aMatches, ByRef $aStyleMap)
+    _UpdateProgress("Dang ap dung style cho de muc do an...")
+
+    Local $oParas = $g_oDoc.Paragraphs
+    Local $iApplied = 0
+    Local $iFailed = 0
+
+    For $i = 1 To UBound($aMatches) - 1
+        Local $iLevel = $aMatches[$i][0]
+        Local $iParaIndex = $aMatches[$i][1]
+        If $iLevel < 1 Or $iLevel > 4 Then ContinueLoop
+
+        Local $oPara = $oParas.Item($iParaIndex)
+        If Not IsObj($oPara) Then
+            $iFailed += 1
+            ContinueLoop
+        EndIf
+
+        $oPara.Range.Style = $aStyleMap[$iLevel]
+        If @error Then
+            $iFailed += 1
+        Else
+            $iApplied += 1
+        EndIf
+    Next
+
+    _UpdateProgress("Da ap dung style cho " & $iApplied & " de muc")
+    MsgBox($MB_ICONINFORMATION, "Hoan tat", _
+        "Da ap dung style cho " & $iApplied & " de muc." & @CRLF & _
+        "Khong ap dung duoc: " & $iFailed)
+EndFunc
+
 ; Export to HTML
 Func _ExportToHTML()
     If Not _CheckConnection() Then Return
@@ -415,24 +703,333 @@ EndFunc
 ; FIX: Them error handling cho CompareDocuments COM call
 Func _CompareDocuments()
     If Not _CheckConnection() Then Return
-    Local $sPath = FileOpenDialog("Chon file de so sanh", @ScriptDir, "Word (*.docx;*.doc)", 1)
-    If @error Then Return
-    _UpdateProgress("Dang so sanh...")
+    _ShowCompareDocumentsDialog()
+EndFunc
 
-    Local $oCompareDoc = _CompareDocumentsByPath($sPath)
-    If Not IsObj($oCompareDoc) Then
-        _UpdateProgress("Loi khi so sanh!")
-        MsgBox($MB_ICONWARNING, "Loi", "Khong the so sanh 2 file!" & @CRLF & _
-            "Co the do 2 file khong tuong thich hoac bi loi.")
+Func _ShowCompareDocumentsDialog()
+    Local $sDocList = _GetOpenWordDocsListData(True)
+    If $sDocList = "" Then
+        MsgBox($MB_ICONWARNING, "Khong co file", "Khong lay duoc danh sach file Word dang mo.")
         Return
     EndIf
 
+    Local $sDefaultRevised = _GetDefaultCompareDocSelection()
+    Local $hDlg = GUICreate("So sanh 2 ban Word", 930, 620, -1, -1, BitOR($WS_POPUP, $WS_CAPTION, $WS_SYSMENU))
+    GUISetBkColor(0xF7F9FB, $hDlg)
+
+    GUICtrlCreateLabel("Chon 2 nguon de so sanh. Co the lay tu van ban dang mo hoac chon file ben ngoai.", 20, 15, 820, 20)
+    GUICtrlSetFont(-1, 9, 600)
+
+    GUICtrlCreateGroup(" Ban goc ", 20, 45, 890, 95)
+    GUICtrlCreateLabel("Nguon dang mo:", 35, 72, 90, 20)
+    Local $cboOriginal = GUICtrlCreateCombo("", 130, 67, 360, 24, $CBS_DROPDOWNLIST)
+    GUICtrlSetData($cboOriginal, $sDocList, "Chinh van ban dang sua")
+    GUICtrlCreateLabel("Hoac file:", 510, 72, 55, 20)
+    Local $inpOriginalPath = GUICtrlCreateInput("", 570, 67, 250, 24)
+    Local $btnBrowseOriginal = GUICtrlCreateButton("Chon...", 830, 66, 60, 26)
+    GUICtrlCreateGroup("", -99, -99, 1, 1)
+
+    GUICtrlCreateGroup(" Ban sua ", 20, 145, 890, 95)
+    GUICtrlCreateLabel("Nguon dang mo:", 35, 172, 90, 20)
+    Local $cboRevised = GUICtrlCreateCombo("", 130, 167, 360, 24, $CBS_DROPDOWNLIST)
+    GUICtrlSetData($cboRevised, $sDocList, $sDefaultRevised)
+    GUICtrlCreateLabel("Hoac file:", 510, 172, 55, 20)
+    Local $inpRevisedPath = GUICtrlCreateInput("", 570, 167, 250, 24)
+    Local $btnBrowseRevised = GUICtrlCreateButton("Chon...", 830, 166, 60, 26)
+    GUICtrlCreateGroup("", -99, -99, 1, 1)
+
+    Local $btnCompare = GUICtrlCreateButton("Tao ban so sanh", 690, 250, 200, 34, $BS_DEFPUSHBUTTON)
+    GUICtrlSetBkColor($btnCompare, 0x27AE60)
+    Local $lblSummary = GUICtrlCreateLabel("Chua tao ban so sanh.", 20, 255, 640, 22)
+    GUICtrlSetColor($lblSummary, 0x2C3E50)
+
+    Local $listRevisions = GUICtrlCreateListView("STT|Loai thay doi|Noi dung|Tac gia|Thoi gian", 20, 295, 890, 230, _
+        BitOR($LVS_REPORT, $LVS_SHOWSELALWAYS))
+    _GUICtrlListView_SetExtendedListViewStyle($listRevisions, BitOR($LVS_EX_FULLROWSELECT, $LVS_EX_GRIDLINES))
+    _GUICtrlListView_SetColumnWidth($listRevisions, 0, 45)
+    _GUICtrlListView_SetColumnWidth($listRevisions, 1, 140)
+    _GUICtrlListView_SetColumnWidth($listRevisions, 2, 420)
+    _GUICtrlListView_SetColumnWidth($listRevisions, 3, 120)
+    _GUICtrlListView_SetColumnWidth($listRevisions, 4, 140)
+
+    Local $btnRefresh = GUICtrlCreateButton("Tai lai danh sach", 20, 535, 120, 30)
+    Local $btnGoTo = GUICtrlCreateButton("Xem thay doi", 150, 535, 120, 30)
+    Local $btnOpenCompare = GUICtrlCreateButton("Mo file so sanh", 280, 535, 120, 30)
+    Local $btnShowMarkup = GUICtrlCreateButton("Hien markup", 410, 535, 100, 30)
+    Local $btnHideMarkup = GUICtrlCreateButton("An markup", 520, 535, 100, 30)
+    Local $btnClose = GUICtrlCreateButton("Dong", 810, 535, 100, 30)
+
+    Local $idDetail = GUICtrlCreateEdit("", 20, 570, 890, 35, BitOR($ES_READONLY, $WS_VSCROLL))
+
+    Local $oCompareDoc = 0
+    Local $aRevisionMap[1] = [0]
+
+    GUISetState(@SW_SHOW, $hDlg)
+
+    While 1
+        Local $iMsg = GUIGetMsg()
+        Switch $iMsg
+            Case $GUI_EVENT_CLOSE, $btnClose
+                GUIDelete($hDlg)
+                Return
+
+            Case $btnBrowseOriginal
+                Local $sPath1 = FileOpenDialog("Chon ban goc", @ScriptDir, "Word (*.docx;*.doc)", 1)
+                If Not @error Then GUICtrlSetData($inpOriginalPath, $sPath1)
+
+            Case $btnBrowseRevised
+                Local $sPath2 = FileOpenDialog("Chon ban sua", @ScriptDir, "Word (*.docx;*.doc)", 1)
+                If Not @error Then GUICtrlSetData($inpRevisedPath, $sPath2)
+
+            Case $btnCompare
+                Local $oDocOriginal = 0, $oDocRevised = 0
+                Local $bCloseOriginal = False, $bCloseRevised = False
+
+                If Not _ResolveCompareSource(GUICtrlRead($cboOriginal), GUICtrlRead($inpOriginalPath), $oDocOriginal, $bCloseOriginal) Then
+                    MsgBox($MB_ICONWARNING, "Loi", "Khong mo duoc ban goc.")
+                    ContinueLoop
+                EndIf
+                If Not _ResolveCompareSource(GUICtrlRead($cboRevised), GUICtrlRead($inpRevisedPath), $oDocRevised, $bCloseRevised) Then
+                    If $bCloseOriginal And IsObj($oDocOriginal) Then $oDocOriginal.Close(0)
+                    MsgBox($MB_ICONWARNING, "Loi", "Khong mo duoc ban sua.")
+                    ContinueLoop
+                EndIf
+
+                If _IsSameCompareSource($oDocOriginal, $oDocRevised) Then
+                    If $bCloseOriginal And IsObj($oDocOriginal) Then $oDocOriginal.Close(0)
+                    If $bCloseRevised And IsObj($oDocRevised) Then $oDocRevised.Close(0)
+                    MsgBox($MB_ICONWARNING, "Trung nguon", "Ban goc va ban sua dang trung nhau.")
+                    ContinueLoop
+                EndIf
+
+                _UpdateProgress("Dang tao ban so sanh...")
+                $oCompareDoc = _CompareDocumentsObjects($oDocOriginal, $oDocRevised)
+
+                If $bCloseOriginal And IsObj($oDocOriginal) Then $oDocOriginal.Close(0)
+                If $bCloseRevised And IsObj($oDocRevised) Then $oDocRevised.Close(0)
+
+                If Not IsObj($oCompareDoc) Then
+                    GUICtrlSetData($lblSummary, "Khong tao duoc ban so sanh.")
+                    _UpdateProgress("Loi khi so sanh!")
+                    MsgBox($MB_ICONWARNING, "Loi", "Khong the so sanh 2 file da chon.")
+                    ContinueLoop
+                EndIf
+
+                _ActivateCompareDocMarkup($oCompareDoc, True)
+                _PopulateCompareRevisionList($listRevisions, $idDetail, $oCompareDoc, $aRevisionMap, $lblSummary)
+                _UpdateProgress("Da tao file so sanh!")
+
+            Case $btnRefresh
+                If IsObj($oCompareDoc) Then _PopulateCompareRevisionList($listRevisions, $idDetail, $oCompareDoc, $aRevisionMap, $lblSummary)
+
+            Case $btnGoTo
+                _GoToSelectedCompareRevision($listRevisions, $oCompareDoc, $aRevisionMap, $idDetail)
+
+            Case $btnOpenCompare
+                If IsObj($oCompareDoc) Then $oCompareDoc.Activate()
+
+            Case $btnShowMarkup
+                If IsObj($oCompareDoc) Then _ActivateCompareDocMarkup($oCompareDoc, True)
+
+            Case $btnHideMarkup
+                If IsObj($oCompareDoc) Then _ActivateCompareDocMarkup($oCompareDoc, False)
+
+            Case $listRevisions
+                _UpdateCompareRevisionDetail($listRevisions, $oCompareDoc, $aRevisionMap, $idDetail)
+        EndSwitch
+    WEnd
+EndFunc
+
+Func _GetDefaultCompareDocSelection()
+    If Not IsObj($g_oWord) Or $g_oWord.Documents.Count = 0 Then Return "Chinh van ban dang sua"
+    For $i = 1 To $g_oWord.Documents.Count
+        Local $oDocItem = $g_oWord.Documents.Item($i)
+        If IsObj($oDocItem) Then
+            If Not IsObj($g_oDoc) Or $oDocItem.FullName <> $g_oDoc.FullName Then Return $i & ". " & $oDocItem.Name
+        EndIf
+    Next
+    Return "Chinh van ban dang sua"
+EndFunc
+
+Func _ResolveCompareSource($sSelection, $sPath, ByRef $oDocResolved, ByRef $bCloseAfter)
+    $oDocResolved = 0
+    $bCloseAfter = False
+
+    Local $sTrimPath = StringStripWS($sPath, 3)
+    If $sTrimPath <> "" Then
+        If Not FileExists($sTrimPath) Then Return False
+        $oDocResolved = $g_oWord.Documents.Open($sTrimPath, False, True)
+        If Not IsObj($oDocResolved) Then Return False
+        $bCloseAfter = True
+        Return True
+    EndIf
+
+    $oDocResolved = _GetStyleSourceDocFromSelection($sSelection)
+    If Not IsObj($oDocResolved) Then Return False
+    Return True
+EndFunc
+
+Func _IsSameCompareSource($oDoc1, $oDoc2)
+    If Not IsObj($oDoc1) Or Not IsObj($oDoc2) Then Return False
+
+    Local $sFull1 = $oDoc1.FullName
+    Local $sFull2 = $oDoc2.FullName
+    If $sFull1 <> "" And $sFull2 <> "" And $sFull1 = $sFull2 Then Return True
+    If $oDoc1.Name = $oDoc2.Name And $oDoc1.Path = $oDoc2.Path Then Return True
+    Return False
+EndFunc
+
+Func _CompareDocumentsObjects($oOriginal, $oRevised)
+    If Not _CheckConnection() Then Return 0
+    If Not IsObj($oOriginal) Or Not IsObj($oRevised) Then Return 0
+
+    Local Const $wdCompareTargetNew = 2
+    Local Const $wdGranularityWordLevel = 1
+    Local $oCompareDoc = $g_oWord.CompareDocuments($oOriginal, $oRevised, $wdCompareTargetNew, $wdGranularityWordLevel, True)
+    If @error Or Not IsObj($oCompareDoc) Then Return 0
+    Return $oCompareDoc
+EndFunc
+
+Func _GetRevisionTypeText($iType)
+    Switch $iType
+        Case 1
+            Return "Insert"
+        Case 2
+            Return "Delete"
+        Case 3
+            Return "Property"
+        Case 4
+            Return "Paragraph #"
+        Case 5
+            Return "Display field"
+        Case 6
+            Return "Reconcile"
+        Case 7
+            Return "Conflict"
+        Case 8
+            Return "Style"
+        Case 9
+            Return "Replace"
+        Case 10
+            Return "Paragraph prop"
+        Case 11
+            Return "Table prop"
+        Case 12
+            Return "Section prop"
+        Case 13
+            Return "Style def"
+        Case 14
+            Return "Moved from"
+        Case 15
+            Return "Moved to"
+        Case Else
+            Return "Khac (" & $iType & ")"
+    EndSwitch
+EndFunc
+
+Func _GetRevisionPreviewText($oRevision)
+    If Not IsObj($oRevision) Then Return ""
+    Local $sText = $oRevision.Range.Text
+    $sText = StringReplace($sText, @CR, " ")
+    $sText = StringReplace($sText, @LF, " ")
+    $sText = StringStripWS($sText, 3)
+    If $sText = "" Then $sText = "[" & _GetRevisionTypeText($oRevision.Type) & "]"
+    If StringLen($sText) > 90 Then $sText = StringLeft($sText, 90) & "..."
+    Return $sText
+EndFunc
+
+Func _GetRevisionDetailText($oRevision)
+    If Not IsObj($oRevision) Then Return ""
+    Local $sText = $oRevision.Range.Text
+    $sText = StringReplace($sText, @CR, " ")
+    $sText = StringReplace($sText, @LF, " ")
+    $sText = StringStripWS($sText, 3)
+    If $sText = "" Then $sText = "(Khong co text hien thi)"
+
+    Return "Loai: " & _GetRevisionTypeText($oRevision.Type) & _
+        " | Tac gia: " & $oRevision.Author & _
+        " | Thoi gian: " & $oRevision.Date & _
+        " | Noi dung: " & $sText
+EndFunc
+
+Func _PopulateCompareRevisionList($listRevisions, $idDetail, $oCompareDoc, ByRef $aRevisionMap, $lblSummary)
+    If Not IsObj($oCompareDoc) Then Return
+
+    _GUICtrlListView_DeleteAllItems($listRevisions)
+    GUICtrlSetData($idDetail, "")
+    ReDim $aRevisionMap[1]
+    $aRevisionMap[0] = 0
+
+    Local $oRevisions = $oCompareDoc.Revisions
+    If Not IsObj($oRevisions) Then
+        GUICtrlSetData($lblSummary, "Khong doc duoc danh sach thay doi.")
+        Return
+    EndIf
+
+    Local $iTotal = $oRevisions.Count
+    Local $iInsert = 0, $iDelete = 0, $iReplace = 0
+
+    For $i = 1 To $iTotal
+        Local $oRevision = $oRevisions.Item($i)
+        If Not IsObj($oRevision) Then ContinueLoop
+
+        ReDim $aRevisionMap[UBound($aRevisionMap) + 1]
+        $aRevisionMap[UBound($aRevisionMap) - 1] = $i
+
+        GUICtrlCreateListViewItem($i & "|" & _GetRevisionTypeText($oRevision.Type) & "|" & _
+            _GetRevisionPreviewText($oRevision) & "|" & $oRevision.Author & "|" & $oRevision.Date, $listRevisions)
+
+        Switch $oRevision.Type
+            Case 1, 15
+                $iInsert += 1
+            Case 2, 14
+                $iDelete += 1
+            Case 9
+                $iReplace += 1
+        EndSwitch
+    Next
+
+    GUICtrlSetData($lblSummary, "Tong thay doi: " & $iTotal & " | Them: " & $iInsert & " | Xoa: " & $iDelete & " | Thay the: " & $iReplace)
+    If $iTotal > 0 Then _UpdateCompareRevisionDetail($listRevisions, $oCompareDoc, $aRevisionMap, $idDetail)
+EndFunc
+
+Func _GetSelectedRevisionMapIndex($listRevisions)
+    Local $vSel = _GUICtrlListView_GetSelectedIndices($listRevisions, False)
+    If $vSel = "" Or $vSel = -1 Then Return -1
+    Return Number($vSel) + 1
+EndFunc
+
+Func _UpdateCompareRevisionDetail($listRevisions, $oCompareDoc, ByRef $aRevisionMap, $idDetail)
+    If Not IsObj($oCompareDoc) Then Return
+    Local $iMapIndex = _GetSelectedRevisionMapIndex($listRevisions)
+    If $iMapIndex < 1 Or $iMapIndex >= UBound($aRevisionMap) Then Return
+
+    Local $oRevision = $oCompareDoc.Revisions.Item($aRevisionMap[$iMapIndex])
+    If Not IsObj($oRevision) Then Return
+    GUICtrlSetData($idDetail, _GetRevisionDetailText($oRevision))
+EndFunc
+
+Func _GoToSelectedCompareRevision($listRevisions, $oCompareDoc, ByRef $aRevisionMap, $idDetail)
+    If Not IsObj($oCompareDoc) Then Return
+    Local $iMapIndex = _GetSelectedRevisionMapIndex($listRevisions)
+    If $iMapIndex < 1 Or $iMapIndex >= UBound($aRevisionMap) Then
+        MsgBox($MB_ICONWARNING, "Chua chon", "Vui long chon 1 thay doi trong danh sach.")
+        Return
+    EndIf
+
+    Local $oRevision = $oCompareDoc.Revisions.Item($aRevisionMap[$iMapIndex])
+    If Not IsObj($oRevision) Then Return
+
     $oCompareDoc.Activate()
-    _UpdateProgress("Da tao file so sanh!")
-    MsgBox($MB_ICONINFORMATION, "So sanh", "Da tao file so sanh moi!" & @CRLF & @CRLF & _
-        "Cac thay doi duoc danh dau:" & @CRLF & _
-        "- Mau do: Xoa" & @CRLF & _
-        "- Mau xanh: Them moi")
+    $oRevision.Range.Select()
+    _UpdateCompareRevisionDetail($listRevisions, $oCompareDoc, $aRevisionMap, $idDetail)
+EndFunc
+
+Func _ActivateCompareDocMarkup($oCompareDoc, $bShowMarkup = True)
+    If Not IsObj($oCompareDoc) Then Return
+    $oCompareDoc.Activate()
+    If Not IsObj($g_oWord) Or Not IsObj($g_oWord.ActiveWindow) Then Return
+    $g_oWord.ActiveWindow.View.ShowRevisionsAndComments = $bShowMarkup
 EndFunc
 
 ; Merge Documents
@@ -556,9 +1153,7 @@ Func _CompareDocumentsByPath($sPath)
     Local $oDoc2 = $g_oWord.Documents.Open($sPath, False, True)
     If Not IsObj($oDoc2) Then Return 0
 
-    Local Const $wdCompareTargetNew = 2
-    Local Const $wdGranularityWordLevel = 1
-    Local $oCompareDoc = $g_oWord.CompareDocuments($g_oDoc, $oDoc2, $wdCompareTargetNew, $wdGranularityWordLevel, True)
+    Local $oCompareDoc = _CompareDocumentsObjects($g_oDoc, $oDoc2)
     $oDoc2.Close(0)
 
     If @error Or Not IsObj($oCompareDoc) Then Return 0
