@@ -4,6 +4,7 @@
 ; ============================================
 
 #AutoIt3Wrapper_UseX64=n
+#AutoIt3Wrapper_Icon=app_icons\app_icon_rounded.ico
 #include-once
 
 ; === INCLUDE CORE ===
