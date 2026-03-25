@@ -1455,7 +1455,7 @@ Func _AI_FixAllThesis()
     If Not _CheckConnection() Then Return
     If MsgBox($MB_YESNO, "Chuan hoa do an", _
         "Se ap dung TOAN BO chuan do an dai hoc VN:" & @CRLF & @CRLF & _
-        "0. Don dep ky tu rac (bullet rong, markdown sot)" & @CRLF & _
+        "0. Don dep ky tu rac an toan (dong rong, markdown sot)" & @CRLF & _
         "1. Xu ly tat ca Markdown" & @CRLF & _
         "2. Font: " & $AI_FONT_NAME & " " & $AI_FONT_SIZE & "pt" & @CRLF & _
         "3. Line spacing: " & $AI_LINE_SPACING & @CRLF & _
@@ -1464,6 +1464,7 @@ Func _AI_FixAllThesis()
         "6. Fix khoang trang, dau cau, dong trong" & @CRLF & _
         "7. Lam dep van ban" & @CRLF & @CRLF & _
         "KHONG bao gom cong thuc toan hoc." & @CRLF & @CRLF & _
+        "KHONG tu dong tao bullet/number list." & @CRLF & @CRLF & _
         "LUU Y: Nen Backup truoc! Tiep tuc?") <> $IDYES Then Return
 
     _UpdateProgress("DANG CHUAN HOA DO AN...")
@@ -1480,8 +1481,6 @@ Func _AI_FixAllThesis()
     _AI_ConvertItalic()
     _AI_ConvertInlineCode()
     _AI_ConvertLinks()
-    _AI_ConvertBullets()
-    _AI_ConvertNumberedLists()
     _AI_ConvertTables()
 
     ; Buoc 2: Chuan hoa format
@@ -1514,7 +1513,7 @@ Func _AI_FixAllThesis()
         "- Heading dung style?" & @CRLF & _
         "- Code block dung font?" & @CRLF & _
         "- Margins, line spacing dung?" & @CRLF & _
-        "- Bullet list dep?" & @CRLF & _
+        "- Khong bi doi thanh bullet list ngoai y muon?" & @CRLF & _
         "- Dau cau hop ly?" & @CRLF & _
         "- Cong thuc neu can thi dung nut Chuan cong thuc rieng")
 EndFunc

@@ -619,8 +619,11 @@ EndFunc
 ; 11. HEADING NUMBER CLEANUP - Sua dau cham de muc
 ; ============================================
 
-; Sua de muc dang "2.4. Tieu de" thanh "2.4 Tieu de"
-; Co the gioi han theo tien to, vi du "2." de chi sua chuong 2.
+; Chuan hoa tien to de muc:
+; - "2.4. Tieu de" -> "2.4 Tieu de"
+; - "2. 4 Tieu de" -> "2.4 Tieu de"
+; - "2 . 4 . Tieu de" -> "2.4. Tieu de" neu separator = ". "
+; Co the gioi han theo tien to, vi du "2." / "2" / "2.4" / "2.4."
 Func _FixHeadingNumberDots()
     If Not _CheckConnection() Then Return
 
@@ -628,15 +631,25 @@ Func _FixHeadingNumberDots()
     Local $sSeparator = GUICtrlRead($g_inputHeadingSeparatorFix)
     If $sSeparator = "" Then $sSeparator = " "
 
-    If $sPrefix <> "" And Not StringRegExp($sPrefix, "^\d+(?:\.\d+)*\.$") Then
-        MsgBox($MB_ICONWARNING, "Loi", "Tien to phai co dang 1. hoac 2.4.")
+    Local $sPrefixNormalized = _NormalizeHeadingPrefixFilter($sPrefix)
+    If $sPrefix <> "" And @error Then
+        MsgBox($MB_ICONWARNING, "Loi", _
+            "Tien to khong hop le." & @CRLF & @CRLF & _
+            "Chap nhan cac dang:" & @CRLF & _
+            "- 1" & @CRLF & _
+            "- 1." & @CRLF & _
+            "- 1.2" & @CRLF & _
+            "- 1.2." & @CRLF & _
+            "- 1.2.3")
         Return
     EndIf
 
+    $sSeparator = _ResolveHeadingSeparatorAlias($sSeparator)
     _UpdateProgress("Dang sua de muc so...")
 
     Local $oParas = $g_oDoc.Paragraphs
     Local $iFixed = 0
+    Local $iScanned = 0
 
     For $i = 1 To $oParas.Count
         Local $oPara = $oParas.Item($i)
@@ -645,29 +658,91 @@ Func _FixHeadingNumberDots()
         Local $sRawText = $oPara.Range.Text
         If $sRawText = "" Then ContinueLoop
 
-        Local $sTrimmed = StringReplace($sRawText, @CR, "")
-        $sTrimmed = StringReplace($sTrimmed, @LF, "")
-        If $sTrimmed = "" Then ContinueLoop
+        $iScanned += 1
+        Local $sNewText = _NormalizeHeadingParagraphPrefixText($sRawText, $sPrefixNormalized, $sSeparator)
+        If @error Then ContinueLoop
+        If $sNewText = $sRawText Then ContinueLoop
 
-        Local $aMatch = StringRegExp($sTrimmed, "^(\s*)(\d+(?:\.\d+)*)\.(\s+)(.+)$", 1)
-        If @error Or UBound($aMatch) < 4 Then ContinueLoop
-
-        Local $sLeading = $aMatch[0]
-        Local $sNumber = $aMatch[1]
-        Local $sRest = $aMatch[3]
-        Local $sFullPrefix = $sNumber & "."
-
-        If $sPrefix <> "" And StringLeft($sFullPrefix, StringLen($sPrefix)) <> $sPrefix Then ContinueLoop
-
-        $oPara.Range.Text = $sLeading & $sNumber & $sSeparator & $sRest & @CR
+        $oPara.Range.Text = $sNewText
         $iFixed += 1
     Next
 
     _UpdateProgress("Da sua " & $iFixed & " de muc")
     MsgBox($MB_ICONINFORMATION, "Hoan tat", _
         "Da sua " & $iFixed & " de muc." & @CRLF & @CRLF & _
-        "Quy tac:" & @CRLF & _
-        "- ""2.4. Tieu de"" -> ""2.4 Tieu de""" & @CRLF & _
-        "- Neu nhap tien to ""2."" thi chi sua cac muc bat dau bang 2.")
+        "Da quet: " & $iScanned & " doan." & @CRLF & @CRLF & _
+        "Ho tro cac dang:" & @CRLF & _
+        "- ""2 Tieu de""" & @CRLF & _
+        "- ""2. Tieu de""" & @CRLF & _
+        "- ""2.4 Tieu de""" & @CRLF & _
+        "- ""2. 4 Tieu de""" & @CRLF & _
+        "- ""2.4. Tieu de""" & @CRLF & _
+        "- ""2 . 4 . Tieu de""" & @CRLF & @CRLF & _
+        "Meo dung nhanh:" & @CRLF & _
+        "- Tien to ""2"" hoac ""2."" -> chi sua chuong 2" & @CRLF & _
+        "- Tien to ""2.4"" hoac ""2.4."" -> chi sua nhanh muc 2.4.x" & @CRLF & _
+        "- Ngat sau so = "" "" -> 2.4 Tieu de" & @CRLF & _
+        "- Ngat sau so = "". "" -> 2.4. Tieu de" & @CRLF & _
+        "- Ngat sau so = "" - "" -> 2.4 - Tieu de" & @CRLF & _
+        "- Ngat sau so = "": "" -> 2.4: Tieu de")
+EndFunc
+
+Func _NormalizeHeadingPrefixFilter($sPrefix)
+    Local $sClean = StringStripWS($sPrefix, 3)
+    If $sClean = "" Then Return ""
+
+    $sClean = StringRegExpReplace($sClean, "\s*\.\s*", ".")
+    If Not StringRegExp($sClean, "^\d+(?:\.\d+)*\.?$") Then Return SetError(1, 0, "")
+    If StringRight($sClean, 1) <> "." Then $sClean &= "."
+    Return $sClean
+EndFunc
+
+Func _ResolveHeadingSeparatorAlias($sSeparator)
+    Local $sValue = $sSeparator
+    Switch StringLower($sValue)
+        Case "\t", "{tab}", "<tab>", "tab"
+            Return @TAB
+        Case "\s", "{space}", "<space>", "space"
+            Return " "
+        Case "\none", "{none}", "<none>", "none"
+            Return ""
+    EndSwitch
+    Return $sValue
+EndFunc
+
+Func _NormalizeHeadingParagraphPrefixText($sRawText, $sPrefixNormalized, $sSeparator)
+    Local $sEol = ""
+    Local $sBody = $sRawText
+    If StringRight($sBody, 2) = @CRLF Then
+        $sEol = @CRLF
+        $sBody = StringTrimRight($sBody, 2)
+    ElseIf StringRight($sBody, 1) = @CR Then
+        $sEol = @CR
+        $sBody = StringTrimRight($sBody, 1)
+    ElseIf StringRight($sBody, 1) = @LF Then
+        $sEol = @LF
+        $sBody = StringTrimRight($sBody, 1)
+    EndIf
+
+    Local $aMatch = StringRegExp($sBody, "^(\s*)((?:\d+\s*(?:\.\s*\d+)*))(\s*(?:\.)?)\s+(.+?)\s*$", 1)
+    If @error Or Not IsArray($aMatch) Or UBound($aMatch) < 4 Then Return SetError(1, 0, $sRawText)
+
+    Local $sLeading = $aMatch[0]
+    Local $sNumberBlock = $aMatch[1]
+    Local $sTrailingMark = $aMatch[2]
+    Local $sRest = $aMatch[3]
+
+    Local $sNormalizedNumber = StringRegExpReplace(StringStripWS($sNumberBlock, 3), "\s*\.\s*", ".")
+    Local $sFullPrefix = $sNormalizedNumber
+    If StringStripWS($sTrailingMark, 3) = "." Then $sFullPrefix &= "."
+
+    If $sPrefixNormalized <> "" Then
+        Local $sPrefixNoDot = StringTrimRight($sPrefixNormalized, 1)
+        Local $bMatchPrefix = (StringLeft($sFullPrefix, StringLen($sPrefixNormalized)) = $sPrefixNormalized)
+        If Not $bMatchPrefix Then $bMatchPrefix = (StringLeft($sNormalizedNumber, StringLen($sPrefixNoDot)) = $sPrefixNoDot)
+        If Not $bMatchPrefix Then Return SetError(2, 0, $sRawText)
+    EndIf
+
+    Return $sLeading & $sNormalizedNumber & $sSeparator & $sRest & $sEol
 EndFunc
 

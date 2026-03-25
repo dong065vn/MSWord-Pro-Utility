@@ -362,12 +362,42 @@ Func _ScanThesisHeadingParagraphs()
 EndFunc
 
 Func _DetectThesisHeadingLevel($sText)
-    If StringRegExp($sText, "^(CHUONG|Chuong|CHƯƠNG|Chương)\s+[IVXLC0-9]+\b") Then Return 1
-    If StringRegExp($sText, "^\d+\.?\s+\S+") Then Return 1
-    If StringRegExp($sText, "^\d+\.\d+\.?\s+\S+") Then Return 2
-    If StringRegExp($sText, "^\d+\.\d+\.\d+\.?\s+\S+") Then Return 3
-    If StringRegExp($sText, "^\d+\.\d+\.\d+\.\d+\.?\s+\S+") Then Return 4
+    Local $sNormalized = _NormalizeThesisHeadingTextForDetection($sText)
+    If $sNormalized = "" Then Return 0
+
+    If _IsSpecialThesisHeadingLevel1($sNormalized) Then Return 1
+    If StringRegExp($sNormalized, "^(CHUONG|Chuong|CHƯƠNG|Chương)\s+[IVXLC0-9]+\s*[:\.\-–—]?\s+\S+") Then Return 1
+    If StringRegExp($sNormalized, "^(PHAN|Phan|PHẦN|Phần)\s+[A-ZIVXLC0-9]+\s*[:\.\-–—]\s+\S+") Then Return 1
+    If StringRegExp($sNormalized, "^\d+\s*\.\s*\d+\s*\.\s*\d+\s*\.\s*\d+\.?\s+\S+") Then Return 4
+    If StringRegExp($sNormalized, "^\d+\s*\.\s*\d+\s*\.\s*\d+\.?\s+\S+") Then Return 3
+    If StringRegExp($sNormalized, "^\d+\s*\.\s*\d+\.?\s+\S+") Then Return 2
+    If StringRegExp($sNormalized, "^\d+\.?\s+\S+") Then Return 1
+
     Return 0
+EndFunc
+
+Func _NormalizeThesisHeadingTextForDetection($sText)
+    If $sText = "" Then Return ""
+
+    Local $sNormalized = $sText
+    $sNormalized = StringReplace($sNormalized, Chr(160), " ")
+    $sNormalized = StringReplace($sNormalized, @TAB, " ")
+    $sNormalized = StringRegExpReplace($sNormalized, "\s+", " ")
+    $sNormalized = StringStripWS($sNormalized, 3)
+    If $sNormalized = "" Then Return ""
+
+    Return $sNormalized
+EndFunc
+
+Func _IsSpecialThesisHeadingLevel1($sText)
+    Local $sUpper = StringUpper($sText)
+
+    If StringRegExp($sUpper, "^M[ỤU]C L[ỤU]C$") Then Return True
+    If StringRegExp($sUpper, "^DANH M[ỤU]C T[ỪU] VI[ẾE]T T[ẮA]T$") Then Return True
+    If StringRegExp($sUpper, "^L[ỜO]I C[ẢA]M [ƠO]N$") Then Return True
+    If StringRegExp($sUpper, "^L[ỜO]I M[ỞO] [ĐD][ẦA]U$") Then Return True
+
+    Return False
 EndFunc
 
 Func _GetParagraphStylesData()
@@ -658,6 +688,7 @@ Func _ApplyDetectedThesisHeadingStyles(ByRef $aMatches, ByRef $aStyleMap)
     Local $oParas = $g_oDoc.Paragraphs
     Local $iApplied = 0
     Local $iFailed = 0
+    Local $iNormalized = 0
 
     For $i = 1 To UBound($aMatches) - 1
         Local $iLevel = $aMatches[$i][0]
@@ -670,6 +701,8 @@ Func _ApplyDetectedThesisHeadingStyles(ByRef $aMatches, ByRef $aStyleMap)
             ContinueLoop
         EndIf
 
+        If _NormalizeDetectedThesisHeadingParagraph($oPara, $iLevel) Then $iNormalized += 1
+
         $oPara.Range.Style = $aStyleMap[$iLevel]
         If @error Then
             $iFailed += 1
@@ -681,7 +714,51 @@ Func _ApplyDetectedThesisHeadingStyles(ByRef $aMatches, ByRef $aStyleMap)
     _UpdateProgress("Da ap dung style cho " & $iApplied & " de muc")
     MsgBox($MB_ICONINFORMATION, "Hoan tat", _
         "Da ap dung style cho " & $iApplied & " de muc." & @CRLF & _
+        "Da chuan hoa so de muc: " & $iNormalized & @CRLF & _
         "Khong ap dung duoc: " & $iFailed)
+EndFunc
+
+Func _NormalizeDetectedThesisHeadingParagraph(ByRef $oPara, $iLevel)
+    If Not IsObj($oPara) Then Return False
+
+    Local $sRawText = $oPara.Range.Text
+    If $sRawText = "" Then Return False
+
+    Local $sEol = ""
+    If StringRight($sRawText, 2) = @CRLF Then
+        $sEol = @CRLF
+        $sRawText = StringTrimRight($sRawText, 2)
+    ElseIf StringRight($sRawText, 1) = @CR Then
+        $sEol = @CR
+        $sRawText = StringTrimRight($sRawText, 1)
+    ElseIf StringRight($sRawText, 1) = @LF Then
+        $sEol = @LF
+        $sRawText = StringTrimRight($sRawText, 1)
+    EndIf
+
+    Local $sNewText = $sRawText
+
+    If $iLevel = 1 Then
+        $sNewText = StringRegExpReplace($sNewText, "^(\s*)(CHUONG|Chuong|CHƯƠNG|Chương)\s+([IVXLC0-9]+)\s*([:\.\-–—])\s*(.+)$", "\1\2 \3\4 \5")
+    EndIf
+
+    Local $aNumberParts = StringRegExp($sNewText, "^(\s*)((?:\d+\s*\.\s*){1,3}\d+)(\.?)(\s+.+)$", 1)
+    If Not @error And IsArray($aNumberParts) And UBound($aNumberParts) >= 4 Then
+        $sNewText = $aNumberParts[0] & _NormalizeHeadingNumberBlock($aNumberParts[1]) & $aNumberParts[2] & $aNumberParts[3]
+    EndIf
+
+    If $sNewText = $sRawText Then Return False
+
+    $oPara.Range.Text = $sNewText & $sEol
+    Return True
+EndFunc
+
+Func _NormalizeHeadingNumberBlock($sNumberBlock)
+    If $sNumberBlock = "" Then Return ""
+
+    Local $sNormalized = StringStripWS($sNumberBlock, 3)
+    $sNormalized = StringRegExpReplace($sNormalized, "\s*\.\s*", ".")
+    Return $sNormalized
 EndFunc
 
 ; Export to HTML
