@@ -9,6 +9,8 @@ aut2exe_build.log
 .tok
 Main.exe
 Main_compiled.exe
+Main_compiled_v*.exe
 Main_build_*.exe
 Releases/*.zip
 Releases/v*/
+app_icons/embedded_icon.ico
