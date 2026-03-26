@@ -43,4 +43,9 @@ Func _CreateTabTools()
     $g_btnShowStats = _CreateButton("Thong ke tong hop", 470, 398, 130, 28)
     $g_btnExportStats = _CreateButton("Xuat bao cao", 610, 398, 110, 28)
     _EndGroup()
+
+    _CreateGroup(" Danh so theo mau text ", 35, 445, 710, 78)
+    $g_btnAutoTextNumbering = _CreateButton("Danh so caption theo mau", 50, 473, 200, 30, 0x16A085)
+    _CreateLabel("Nhap mau nhu: Hinh 1.1 Anh edge computing, chon style, sau do danh lai Hinh/Bang/Bieu do/So do hang loat.", 270, 478, 450, 20)
+    _EndGroup()
 EndFunc

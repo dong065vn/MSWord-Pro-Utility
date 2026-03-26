@@ -18,8 +18,8 @@
 #include <MsgBoxConstants.au3>
 
 ; === VERSION ===
-Global Const $VERSION = "6.1.3"
-Global Const $APP_VERSION = "6.1.3"
+Global Const $VERSION = "6.1.4"
+Global Const $APP_VERSION = "6.1.4"
 Global Const $APP_TITLE = "PDF to Word Fixer Pro"
 
 ; === WORD CONSTANTS ===
@@ -85,6 +85,7 @@ Global $g_btnResizeImages, $g_btnCenterImages, $g_btnAutoCaption, $g_btnRemoveIm
 Global $g_btnAutoFitTable, $g_btnAutoFitWindow, $g_btnTableCaption, $g_btnTableBorder
 Global $g_btnWordCount, $g_btnCheckSpelling, $g_btnCheckFormat
 Global $g_btnShowStats, $g_btnExportStats
+Global $g_btnAutoTextNumbering
 
 ; === Tab 4: TOC ===
 Global $g_btnCreateTOC, $g_btnUpdateTOC, $g_btnDeleteTOC

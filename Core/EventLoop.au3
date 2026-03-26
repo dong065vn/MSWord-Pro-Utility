@@ -153,6 +153,8 @@ Func _MainLoop()
                 _ShowDetailedStats()
             Case $g_btnExportStats
                 _SafeExecute("_ExportStats")
+            Case $g_btnAutoTextNumbering
+                _SafeExecute("_ShowAutoTextNumberingDialog")
                 
             ; === TAB 4: TOC ===
             Case $g_btnCreateTOC

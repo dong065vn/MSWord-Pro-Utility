@@ -1,5 +1,5 @@
 ; ============================================
-; PDF to Word Fixer Pro v6.1.3 - MODULAR ARCHITECTURE
+; PDF to Word Fixer Pro v6.1.4 - MODULAR ARCHITECTURE
 ; Entry Point - Chay file nay de khoi dong
 ; ============================================
 
@@ -39,6 +39,7 @@
 #include "Modules\StyleHotkey.au3"
 #include "Modules\CopyStyle.au3"
 #include "Modules\Advanced.au3"
+#include "Modules\AutoTextNumbering.au3"
 #include "Modules\QuickUtils.au3"
 #include "Modules\SmartFix.au3"
 #include "Modules\AIFormat.au3"

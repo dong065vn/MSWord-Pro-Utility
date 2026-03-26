@@ -530,16 +530,15 @@ Func _GetParagraphStylesDataFromDoc($oDocSource)
     For $i = 1 To $oStyles.Count
         Local $oStyle = $oStyles.Item($i)
         If Not IsObj($oStyle) Then ContinueLoop
-        If $oStyle.Type <> $wdStyleTypeParagraph Then ContinueLoop
+        Local $iStyleType = _GetWordStyleTypeSafe($oStyle)
+        If $iStyleType <> $wdStyleTypeParagraph Then ContinueLoop
 
-        Local $sName = $oStyle.NameLocal
+        Local $sName = _GetWordStyleDisplayNameSafe($oStyle)
         If $sName = "" Then ContinueLoop
         If StringLeft($sName, 1) = "_" Then ContinueLoop
         If _StyleNameExistsInArray($aCustom, $iCustom, $sName) Or _StyleNameExistsInArray($aBuiltin, $iBuiltin, $sName) Then ContinueLoop
 
-        Local $bBuiltIn = False
-        $bBuiltIn = $oStyle.BuiltIn
-        If @error Then $bBuiltIn = _GuessBuiltInStyleName($sName)
+        Local $bBuiltIn = _IsWordStyleBuiltInSafe($oStyle, $sName)
 
         If $bBuiltIn Then
             $iBuiltin += 1
@@ -560,6 +559,50 @@ Func _GetParagraphStylesDataFromDoc($oDocSource)
     If $sCustom <> "" And $sBuiltin <> "" Then Return $sCustom & "|" & $sBuiltin
     If $sCustom <> "" Then Return $sCustom
     Return $sBuiltin
+EndFunc
+
+Func _GetWordStyleDisplayNameSafe($oStyle)
+    If Not IsObj($oStyle) Then Return ""
+
+    Local $bPrevMute = $g_bMuteComErrors
+    Local $sNameLocal = ""
+    Local $sName = ""
+
+    $g_bMuteComErrors = True
+    $sNameLocal = $oStyle.NameLocal
+    If @error Then $sNameLocal = ""
+    $sName = $oStyle.Name
+    If @error Then $sName = ""
+    $g_bMuteComErrors = $bPrevMute
+
+    If StringStripWS($sNameLocal, 3) <> "" Then Return StringStripWS($sNameLocal, 3)
+    Return StringStripWS($sName, 3)
+EndFunc
+
+Func _GetWordStyleTypeSafe($oStyle)
+    If Not IsObj($oStyle) Then Return -1
+
+    Local $bPrevMute = $g_bMuteComErrors
+    Local $iType = -1
+    $g_bMuteComErrors = True
+    $iType = $oStyle.Type
+    If @error Then $iType = -1
+    $g_bMuteComErrors = $bPrevMute
+    Return $iType
+EndFunc
+
+Func _IsWordStyleBuiltInSafe($oStyle, $sFallbackName = "")
+    If Not IsObj($oStyle) Then Return _GuessBuiltInStyleName($sFallbackName)
+
+    Local $bPrevMute = $g_bMuteComErrors
+    Local $vBuiltIn = False
+    $g_bMuteComErrors = True
+    $vBuiltIn = $oStyle.BuiltIn
+    Local $bHadError = @error
+    $g_bMuteComErrors = $bPrevMute
+
+    If $bHadError Then Return _GuessBuiltInStyleName($sFallbackName)
+    Return ($vBuiltIn <> 0)
 EndFunc
 
 Func _StyleNameExistsInArray(ByRef $aNames, $iCount, $sNeedle)
