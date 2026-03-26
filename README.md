@@ -1,4 +1,4 @@
-# PDF to Word Fixer Pro v6.1.2
+# PDF to Word Fixer Pro v6.1.3
 
 Ung dung AutoIt ho tro sua loi va chuan hoa tai lieu Word sau khi chuyen tu PDF, AI, hoac tai lieu bi vo dinh dang. Du an duoc to chuc theo kien truc modular de de mo rong, build, va test.
 

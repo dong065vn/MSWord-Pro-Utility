@@ -57,6 +57,7 @@ Func _TestMarkdownStructures()
         "- [x] bullet checkbox" & @CRLF & _
         "• bullet two" & @CRLF & _
         "1. first item" & @CRLF & _
+        "2." & @TAB & "Bo cuc bao cao" & Chr(11) & "Bao cao duoc cau truc thanh 2 phan." & @CRLF & _
         "[OpenAI](https://openai.com)" & @CRLF & _
         "![Logo](https://example.com/logo.png)" & @CRLF & _
         "| Col1 | Col2 |" & @CRLF & _
@@ -100,6 +101,7 @@ Func _TestMarkdownStructures()
 
     Local $iBulletParas = 0, $iNumberParas = 0
     Local $bMergedBulletAndNumber = False
+    Local $bSplitTabbedNumberHeading = False
     For $i = 1 To $g_oDoc.Paragraphs.Count
         Local $oPara2 = $g_oDoc.Paragraphs.Item($i)
         If Not IsObj($oPara2) Then ContinueLoop
@@ -109,11 +111,15 @@ Func _TestMarkdownStructures()
         If $iListType <> 0 Then
             If StringInStr($oPara2.Range.Text, "bullet") > 0 Then $iBulletParas += 1
             If StringInStr($oPara2.Range.Text, "first item") > 0 Then $iNumberParas += 1
+            If StringInStr($oPara2.Range.Text, "Bo cuc bao cao") > 0 Then $iNumberParas += 1
+        Else
+            If StringInStr($oPara2.Range.Text, "Bao cao duoc cau truc thanh 2 phan.") > 0 Then $bSplitTabbedNumberHeading = True
         EndIf
     Next
     $bOk = _Assert($iBulletParas >= 4, "AI convert bullets tao list cho cac dang bullet/checkbox", "AI convert bullets chua tao du list") And $bOk
-    $bOk = _Assert($iNumberParas >= 1, "AI convert numbered list tao duoc numbered list", "AI convert numbered list that bai") And $bOk
+    $bOk = _Assert($iNumberParas >= 2, "AI convert numbered list tao duoc numbered list", "AI convert numbered list that bai") And $bOk
     $bOk = _Assert(Not $bMergedBulletAndNumber, "AI convert lists giu paragraph tach biet", "AI convert lists lam dính bullet va numbered item") And $bOk
+    $bOk = _Assert($bSplitTabbedNumberHeading, "AI convert numbered list tach duoc tieu de tab va noi dung theo sau", "AI convert numbered list lam dinh noi dung sau tieu de vao numbering") And $bOk
 
     $bOk = _Assert($g_oDoc.Tables.Count >= 2, "AI convert tables tao duoc ca 2 dang Markdown table", "AI convert tables khong tao du du lieu bang") And $bOk
     If $g_oDoc.Tables.Count >= 1 Then

@@ -189,73 +189,67 @@ Func _AcceptAllChanges()
 EndFunc
 
 ; Convert Numbering to Text
-; FIX: Su dung while-loop de xu ly Live Collection, xoa list formatting sau khi convert
 Func _ConvertNumberingToText()
     If Not _CheckConnection() Then Return
     If MsgBox($MB_YESNO, "Xac nhan", _
-        "Chuyen Numbering/Bullet thanh text?" & @CRLF & @CRLF & _
+        "Chuyen Numbering thanh text?" & @CRLF & @CRLF & _
         "Chuc nang nay se:" & @CRLF & _
-        "1. Chuyen so thu tu (1. 2. 3.) thanh text" & @CRLF & _
-        "2. Chuyen bullet thanh ky tu text" & @CRLF & _
-        "3. Xoa dinh dang list (thut le, numbering)" & @CRLF & @CRLF & _
+        "1. Nhan dien numbering cua Word va doi thanh text" & @CRLF & _
+        "2. Nhan dien numbering dang text tu PDF (1. / 1) / 1 - / 1:)" & @CRLF & _
+        "3. Xoa list formatting con sot lai" & @CRLF & @CRLF & _
         "LUU Y: Nen Backup truoc!") <> $IDYES Then Return
 
     _UpdateProgress("Dang chuyen Numbering thanh text...")
-
-    ; Buoc 1: Dem so luong lists ban dau
-    Local $iTotal = $g_oDoc.Lists.Count
+    Local $aStats = _ConvertListMarkersToTextInRange($g_oDoc.Content, "numbering")
+    Local $iTotal = $aStats[0] + $aStats[1]
     If $iTotal = 0 Then
-        MsgBox($MB_ICONINFORMATION, "Thong bao", "Khong tim thay Numbering/Bullet nao!")
+        MsgBox($MB_ICONINFORMATION, "Thong bao", "Khong tim thay Numbering nao!")
         _UpdateProgress("")
         Return
     EndIf
 
-    ; Buoc 2: Convert numbers thanh text
-    ; QUAN TRONG: Lists la Live Collection - sau moi ConvertNumbersToText(),
-    ; list bi xoa khoi collection. Dung While loop de xu ly an toan.
-    Local $iConverted = 0
-    Local $iFailed = 0
-
-    While $g_oDoc.Lists.Count > 0
-        _UpdateProgress("Dang chuyen list " & ($iConverted + 1) & "/" & $iTotal & "...")
-        Local $oList = $g_oDoc.Lists.Item(1)
-        If IsObj($oList) Then
-            ; Luu range truoc khi convert de xoa formatting sau
-            Local $oRange = $oList.Range
-            $oList.ConvertNumbersToText()
-            If @error Then
-                $iFailed += 1
-            Else
-                ; Buoc 3: Xoa list formatting con sot lai (thut le, ListTemplate)
-                ; Neu khong xoa, paragraph van giu indent va co the bi re-number
-                If IsObj($oRange) Then
-                    $oRange.ListFormat.RemoveNumbers()
-                EndIf
-                $iConverted += 1
-            EndIf
-        Else
-            ExitLoop ; Tranh vong lap vo han
-        EndIf
-    WEnd
-
-    ; Buoc 4: Bao cao ket qua
     Local $sMsg = "CHUYEN NUMBERING THANH TEXT" & @CRLF & @CRLF
-    $sMsg &= "Tong cong: " & $iTotal & " lists" & @CRLF
-    $sMsg &= "Thanh cong: " & $iConverted & @CRLF
-    If $iFailed > 0 Then $sMsg &= "Loi: " & $iFailed & @CRLF
+    $sMsg &= "Numbering Word: " & $aStats[0] & @CRLF
+    $sMsg &= "Numbering dang text/PDF: " & $aStats[1] & @CRLF
+    If $aStats[2] > 0 Then $sMsg &= "Loi: " & $aStats[2] & @CRLF
 
     _LogPreview($sMsg)
-    _UpdateProgress("Da chuyen " & $iConverted & "/" & $iTotal & " lists!")
+    _UpdateProgress("Da xu ly " & $iTotal & " numbering!")
     MsgBox($MB_ICONINFORMATION, "Hoan tat", $sMsg)
 EndFunc
 
 ; Convert Bullet to Text
 Func _ConvertBulletToText()
-    _ConvertNumberingToText()
+    If Not _CheckConnection() Then Return
+    If MsgBox($MB_YESNO, "Xac nhan", _
+        "Chuyen Bullet thanh text?" & @CRLF & @CRLF & _
+        "Chuc nang nay se:" & @CRLF & _
+        "1. Nhan dien bullet cua Word va doi thanh text" & @CRLF & _
+        "2. Nhan dien bullet dang text tu PDF (- / + / * / • / checkbox)" & @CRLF & _
+        "3. Xoa list formatting con sot lai" & @CRLF & @CRLF & _
+        "LUU Y: Nen Backup truoc!") <> $IDYES Then Return
+
+    _UpdateProgress("Dang chuyen Bullet thanh text...")
+
+    Local $aStats = _ConvertListMarkersToTextInRange($g_oDoc.Content, "bullet")
+    Local $iTotal = $aStats[0] + $aStats[1]
+    If $iTotal = 0 Then
+        MsgBox($MB_ICONINFORMATION, "Thong bao", "Khong tim thay Bullet nao!")
+        _UpdateProgress("")
+        Return
+    EndIf
+
+    Local $sMsg = "CHUYEN BULLET THANH TEXT" & @CRLF & @CRLF
+    $sMsg &= "Bullet Word: " & $aStats[0] & @CRLF
+    $sMsg &= "Bullet dang text/PDF: " & $aStats[1] & @CRLF
+    If $aStats[2] > 0 Then $sMsg &= "Loi: " & $aStats[2] & @CRLF
+
+    _LogPreview($sMsg)
+    _UpdateProgress("Da xu ly " & $iTotal & " bullet!")
+    MsgBox($MB_ICONINFORMATION, "Hoan tat", $sMsg)
 EndFunc
 
 ; Convert Numbering to Text (Selection)
-; FIX: Them IsObj check, xu ly insertion point, xoa list formatting
 Func _ConvertNumberingToTextSelection()
     If Not _CheckConnection() Then Return
     Local $oSel = $g_oWord.Selection
@@ -273,19 +267,140 @@ Func _ConvertNumberingToTextSelection()
     Local $oRange = $oSel.Range
     If Not IsObj($oRange) Then Return
 
-    If $oRange.ListFormat.ListType <> 0 Then ; 0 = wdListNoNumbering
-        _UpdateProgress("Dang chuyen vung chon...")
-        $oRange.ListFormat.ConvertNumbersToText()
-        ; Xoa list formatting con sot lai
-        $oRange.ListFormat.RemoveNumbers()
-        _UpdateProgress("Da chuyen vung chon thanh text!")
+    Local $aStats = _ConvertListMarkersToTextInRange($oRange, "numbering")
+    Local $iTotal = $aStats[0] + $aStats[1]
+    If $iTotal > 0 Then
+        _UpdateProgress("Da chuyen " & $iTotal & " numbering trong vung chon thanh text!")
     Else
         MsgBox($MB_ICONWARNING, "Thong bao", _
-            "Vung chon khong co Numbering/Bullet!" & @CRLF & @CRLF & _
+            "Vung chon khong co Numbering!" & @CRLF & @CRLF & _
             "Huong dan:" & @CRLF & _
             "1. Boi den cac dong co so thu tu hoac bullet" & @CRLF & _
             "2. Nhan lai nut nay")
     EndIf
+EndFunc
+
+Func _ConvertListMarkersToTextInRange(ByRef $oRange, $sMode)
+    Local $aStats[3] = [0, 0, 0] ; 0=Word list, 1=text marker, 2=failed
+    If Not IsObj($oRange) Then Return $aStats
+
+    Local $oParas = $oRange.Paragraphs
+    If Not IsObj($oParas) Then Return $aStats
+
+    For $i = $oParas.Count To 1 Step -1
+        Local $oPara = $oParas.Item($i)
+        If Not IsObj($oPara) Then ContinueLoop
+
+        Local $oParaRange = $oPara.Range
+        If Not IsObj($oParaRange) Then ContinueLoop
+
+        Local $iListType = $oParaRange.ListFormat.ListType
+        If _ParagraphMatchesListMode($iListType, $sMode) Then
+            If _ConvertWordListParagraphToText($oParaRange) Then
+                $aStats[0] += 1
+            Else
+                $aStats[2] += 1
+            EndIf
+            ContinueLoop
+        EndIf
+
+        If _NormalizePlainTextListParagraph($oParaRange, $sMode) Then
+            $aStats[1] += 1
+        EndIf
+    Next
+
+    Return $aStats
+EndFunc
+
+Func _ParagraphMatchesListMode($iListType, $sMode)
+    If $iListType = 0 Then Return False
+
+    Switch StringLower($sMode)
+        Case "numbering"
+            ; 3=simple numbering, 4=outline numbering, 5=mixed numbering
+            Return ($iListType = 3 Or $iListType = 4 Or $iListType = 5)
+        Case "bullet"
+            ; 2=bullet, 6=picture bullet
+            Return ($iListType = 2 Or $iListType = 6)
+    EndSwitch
+
+    Return False
+EndFunc
+
+Func _ConvertWordListParagraphToText(ByRef $oParaRange)
+    If Not IsObj($oParaRange) Then Return False
+    $oParaRange.ListFormat.ConvertNumbersToText()
+    If @error Then Return False
+    $oParaRange.ListFormat.RemoveNumbers()
+    Return (Not @error)
+EndFunc
+
+Func _NormalizePlainTextListParagraph(ByRef $oParaRange, $sMode)
+    If Not IsObj($oParaRange) Then Return False
+
+    Local $sText = $oParaRange.Text
+    If $sText = "" Then Return False
+
+    Local $sEol = ""
+    Local $sBody = $sText
+    If StringRight($sBody, 2) = @CRLF Then
+        $sEol = @CRLF
+        $sBody = StringTrimRight($sBody, 2)
+    ElseIf StringRight($sBody, 1) = @CR Then
+        $sEol = @CR
+        $sBody = StringTrimRight($sBody, 1)
+    ElseIf StringRight($sBody, 1) = @LF Then
+        $sEol = @LF
+        $sBody = StringTrimRight($sBody, 1)
+    EndIf
+
+    Local $sNewBody = ""
+    Switch StringLower($sMode)
+        Case "numbering"
+            $sNewBody = _NormalizePlainTextNumberingLine($sBody)
+        Case "bullet"
+            $sNewBody = _NormalizePlainTextBulletLine($sBody)
+        Case Else
+            Return False
+    EndSwitch
+
+    If @error Or $sNewBody = "" Or $sNewBody = $sBody Then Return False
+    $oParaRange.Text = $sNewBody & $sEol
+    Return True
+EndFunc
+
+Func _NormalizePlainTextNumberingLine($sLine)
+    Local $aMatch = StringRegExp($sLine, "^(\s*)(\d+(?:\s*\.\s*\d+)*)\s*([\.\)]|[-:])(?:\s+|\t+)(.+?)\s*$", 1)
+    If @error Or Not IsArray($aMatch) Or UBound($aMatch) < 4 Then Return SetError(1, 0, "")
+
+    Local $sLeading = $aMatch[0]
+    Local $sNumber = StringRegExpReplace(StringStripWS($aMatch[1], 3), "\s*\.\s*", ".")
+    Local $sSuffix = $aMatch[2]
+    Local $sContent = StringStripWS($aMatch[3], 3)
+    If $sContent = "" Then Return SetError(2, 0, "")
+
+    Return $sLeading & $sNumber & $sSuffix & " " & $sContent
+EndFunc
+
+Func _NormalizePlainTextBulletLine($sLine)
+    Local $aCheckbox = StringRegExp($sLine, "^(\s*)([-+*])?\s*(\[(?: |x|X)\])(?:\s+|\t+)(.+?)\s*$", 1)
+    If Not @error And IsArray($aCheckbox) And UBound($aCheckbox) >= 4 Then
+        Local $sLeading = $aCheckbox[0]
+        Local $sMarker = $aCheckbox[2]
+        Local $sContent = StringStripWS($aCheckbox[3], 3)
+        If $sContent = "" Then Return SetError(2, 0, "")
+        Return $sLeading & $sMarker & " " & $sContent
+    EndIf
+
+    Local $aMatch = StringRegExp($sLine, "^(\s*)([•◦▪■●○\-+*–—])(?:\s+|\t+)(.+?)\s*$", 1)
+    If @error Or Not IsArray($aMatch) Or UBound($aMatch) < 3 Then Return SetError(1, 0, "")
+
+    Local $sLeading2 = $aMatch[0]
+    Local $sMarker2 = $aMatch[1]
+    Local $sContent2 = StringStripWS($aMatch[2], 3)
+    If $sContent2 = "" Then Return SetError(2, 0, "")
+
+    Return $sLeading2 & $sMarker2 & " " & $sContent2
 EndFunc
 
 ; Export to PDF

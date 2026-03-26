@@ -948,6 +948,13 @@ Func _AI_ConvertNumberedLists()
     Local $oRange = _AI_GetRange()
     If Not IsObj($oRange) Then Return
 
+    ; Tach cac doan kieu "1.{TAB}Tieu de" + manual line break + noi dung
+    ; de phan noi dung khong bi nuot vao cung 1 numbered item.
+    _AI_SplitTabbedNumberedHeadingParagraphs($oRange)
+
+    $oRange = _AI_GetRange()
+    If Not IsObj($oRange) Then Return
+
     Local $iCount = 0
     Local $oParas = $oRange.Paragraphs
     Local $aRuns[1][2]
@@ -979,6 +986,47 @@ Func _AI_ConvertNumberedLists()
     Next
 
     _UpdateProgress("Da chuyen " & $iCount & " numbered items!")
+EndFunc
+
+Func _AI_SplitTabbedNumberedHeadingParagraphs(ByRef $oRange)
+    If Not IsObj($oRange) Then Return
+
+    Local $oParas = $oRange.Paragraphs
+    If Not IsObj($oParas) Then Return
+
+    For $i = $oParas.Count To 1 Step -1
+        Local $oPara = $oParas.Item($i)
+        If Not IsObj($oPara) Then ContinueLoop
+
+        Local $sText = $oPara.Range.Text
+        If StringInStr($sText, Chr(11)) = 0 Then ContinueLoop
+
+        Local $sBody = $sText
+        Local $sEol = ""
+        If StringRight($sBody, 2) = @CRLF Then
+            $sEol = @CRLF
+            $sBody = StringTrimRight($sBody, 2)
+        ElseIf StringRight($sBody, 1) = @CR Then
+            $sEol = @CR
+            $sBody = StringTrimRight($sBody, 1)
+        ElseIf StringRight($sBody, 1) = @LF Then
+            $sEol = @LF
+            $sBody = StringTrimRight($sBody, 1)
+        EndIf
+
+        Local $iBreak = StringInStr($sBody, Chr(11))
+        If $iBreak <= 0 Then ContinueLoop
+
+        Local $sFirstLine = StringLeft($sBody, $iBreak - 1)
+        If Not StringRegExp($sFirstLine, "^[\s]*\d+[\.\)]\t+\S") Then ContinueLoop
+
+        Local $sRest = StringMid($sBody, $iBreak + 1)
+        If StringStripWS($sRest, 3) = "" Then ContinueLoop
+
+        Local $sNewText = $sFirstLine & Chr(13) & $sRest
+        If $sEol <> "" Then $sNewText &= $sEol
+        $oPara.Range.Text = $sNewText
+    Next
 EndFunc
 
 ; | col | col | -> Word table
