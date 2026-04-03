@@ -1,5 +1,5 @@
 ; ============================================
-; PDF to Word Fixer Pro v6.1.8 - MODULAR ARCHITECTURE
+; PDF to Word Fixer Pro v8.8.68 - MODULAR ARCHITECTURE
 ; Entry Point - Chay file nay de khoi dong
 ; ============================================
 
@@ -48,6 +48,10 @@ Opt("GUIOnEventMode", 0)
 Opt("MustDeclareVars", 0)
 
 _InitApplication()
+
+
+
+
 
 
 

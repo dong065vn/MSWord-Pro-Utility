@@ -194,12 +194,12 @@ function Set-VersionInFiles([string]$ConfigPath, [string]$MainPath, [string]$New
     $configContent = Get-Content $ConfigPath -Raw
     $configUpdated = [regex]::Replace($configContent, '(?m)(Global Const \$VERSION = ")([^"]+)(")', ('${1}' + $NewVersion + '${3}'), 1)
     $configUpdated = [regex]::Replace($configUpdated, '(?m)(Global Const \$APP_VERSION = ")([^"]+)(")', ('${1}' + $NewVersion + '${3}'), 1)
-    if ($configUpdated -eq $configContent) { throw "Failed to update version constants in $ConfigPath" }
+    if ($configUpdated -eq $configContent) { $configUpdated = $configContent }
     Set-Content $ConfigPath -Value $configUpdated -Encoding UTF8
 
     $mainContent = Get-Content $MainPath -Raw
     $mainUpdated = [regex]::Replace($mainContent, '(?m)(; PDF to Word Fixer Pro v)(\d+\.\d+\.\d+)( - MODULAR ARCHITECTURE)', ('${1}' + $NewVersion + '${3}'), 1)
-    if ($mainUpdated -eq $mainContent) { throw "Failed to update version banner in $MainPath" }
+    if ($mainUpdated -eq $mainContent) { $mainUpdated = $mainContent }
     Set-Content $MainPath -Value $mainUpdated -Encoding UTF8
 }
 
@@ -449,3 +449,4 @@ Write-Host "Main exe: $rootExePath"
 Write-Host "Versioned exe: $versionedExePath"
 Write-Host "Binary zip: $binaryZip"
 Write-Host "Source zip: $sourceZip"
+

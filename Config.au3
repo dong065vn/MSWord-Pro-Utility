@@ -18,8 +18,8 @@
 #include <MsgBoxConstants.au3>
 
 ; === VERSION ===
-Global Const $VERSION = "6.1.8"
-Global Const $APP_VERSION = "6.1.8"
+Global Const $VERSION = "8.8.68"
+Global Const $APP_VERSION = "8.8.68"
 Global Const $APP_TITLE = "PDF to Word Fixer Pro"
 
 ; === WORD CONSTANTS ===
@@ -180,6 +180,10 @@ Func _ComErrorHandler($oError)
     ConsoleWrite("COM Error: " & $oError.description & " [0x" & Hex($oError.number) & "]" & @CRLF)
     Return SetError(1, 0, 0)
 EndFunc
+
+
+
+
 
 
 
