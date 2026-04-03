@@ -16,6 +16,17 @@ Func _GetResourcesDir()
     Return _GetProjectRoot() & "\Resources"
 EndFunc
 
+; Lay nguon icon uu tien de set cho GUI/tray.
+; Khi chay script, uu tien file ico trong project.
+; Khi da compile, dung chinh exe de Windows lay du bo icon embedded.
+Func _GetAppIconSource()
+    Local $sProjectIcon = _GetProjectRoot() & "\app_icons\app_icon_rounded.ico"
+    If FileExists($sProjectIcon) Then Return $sProjectIcon
+    Local $sResourcesIcon = _GetResourcesDir() & "\icon.ico"
+    If FileExists($sResourcesIcon) Then Return $sResourcesIcon
+    Return @ScriptFullPath
+EndFunc
+
 ; Lay duong dan file hotkey dung chung
 Func _GetHotkeyIniPath()
     Return _GetResourcesDir() & "\StyleHotkeys.ini"

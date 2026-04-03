@@ -43,6 +43,7 @@ Func _FixAllDocument()
     _UpdateProgress("Dang sua toan bo...")
     Local $oFind = $g_oDoc.Content.Find
     If IsObj($oFind) Then _ApplyFindReplaceFixes($oFind)
+    If GUICtrlRead($g_chkRemoveFakeNumbering) = $GUI_CHECKED Then _RemoveFakeNumberingInRange($g_oDoc.Content)
 
     If GUICtrlRead($g_chkFixLineSpacing) = $GUI_CHECKED Then
         _FixLineSpacingRange($g_oDoc.Content, 1.5)
@@ -71,6 +72,7 @@ Func _QuickFixAll()
     GUICtrlSetState($g_chkFixLineSpacing, $GUI_CHECKED)
     GUICtrlSetState($g_chkRemoveEmptyLines, $GUI_CHECKED)
     GUICtrlSetState($g_chkFixSpacingBefore, $GUI_CHECKED)
+    GUICtrlSetState($g_chkRemoveFakeNumbering, $GUI_UNCHECKED)
 
     _FixAllDocument()
 EndFunc
@@ -78,6 +80,7 @@ EndFunc
 ; Apply text fixes (cho string)
 Func _ApplyTextFixes($sText)
     If GUICtrlRead($g_chkLineBreaks) = $GUI_CHECKED Then
+        $sText = StringReplace($sText, Chr(11), " ")
         $sText = StringReplace($sText, @LF, " ")
         $sText = StringReplace($sText, @CR & @CR, "{{PARA}}")
         $sText = StringReplace($sText, @CR, " ")
@@ -103,6 +106,16 @@ Func _ApplyTextFixes($sText)
         $sText = StringReplace($sText, ChrW(160), " ")
         $sText = StringReplace($sText, ChrW(8211), "-")
         $sText = StringReplace($sText, ChrW(8212), "-")
+    EndIf
+
+    If GUICtrlRead($g_chkRemoveFakeNumbering) = $GUI_CHECKED Then
+        Local $aLines = StringSplit(StringReplace($sText, @CRLF, @LF), @LF, 1)
+        If Not @error Then
+            For $i = 1 To $aLines[0]
+                $aLines[$i] = _StripUnnecessaryLeadingNumbering($aLines[$i])
+            Next
+            $sText = _ArrayToString($aLines, @CRLF, 1)
+        EndIf
     EndIf
     
     Return $sText
@@ -149,6 +162,85 @@ Func _ApplyFindReplaceFixes($oFind)
             _DoReplace($oFind, "^t^t", "^t")
         Next
     EndIf
+EndFunc
+
+Func _CollapseExtraParagraphBreaks($oRange, $bCompact = True)
+    If Not IsObj($oRange) Then Return
+
+    Local $oFind = $oRange.Find
+    If Not IsObj($oFind) Then Return
+
+    $oFind.ClearFormatting()
+    $oFind.Replacement.ClearFormatting()
+    $oFind.Forward = True
+    $oFind.Wrap = 0
+    $oFind.Format = False
+    $oFind.MatchCase = False
+    $oFind.MatchWholeWord = False
+    $oFind.MatchWildcards = False
+    $oFind.MatchSoundsLike = False
+    $oFind.MatchAllWordForms = False
+
+    Local $sFind = "^p^p"
+    Local $sReplace = "^p"
+    If Not $bCompact Then
+        $sFind = "^p^p^p"
+        $sReplace = "^p^p"
+    EndIf
+
+    For $i = 1 To 12
+        $oFind.Text = $sFind
+        $oFind.Replacement.Text = $sReplace
+        $oFind.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
+    Next
+EndFunc
+
+Func _StripUnnecessaryLeadingNumbering($sText)
+    Local $sOriginal = $sText
+    Local $sCore = StringRegExpReplace($sText, "[\r\x07]+$", "")
+    If StringStripWS($sCore, 3) = "" Then Return $sOriginal
+
+    If StringRegExp($sCore, "^\s*\d+(\.\d+)+([\.\)])?\s+") Then Return $sOriginal
+
+    Local $sUpdated = StringRegExpReplace($sCore, "^\s*(\(?\d{1,3}[\.\)]|\(?[A-Za-z][\.\)])\s+(?=\S)", "", 1)
+    If @extended = 0 Then Return $sOriginal
+
+    Return $sUpdated & StringTrimLeft($sOriginal, StringLen($sCore))
+EndFunc
+
+Func _RemoveFakeNumberingInRange($oRange)
+    If Not IsObj($oRange) Then Return 0
+
+    Local $oParas = $oRange.Paragraphs
+    If Not IsObj($oParas) Then Return 0
+
+    Local $iRemoved = 0
+    For $i = $oParas.Count To 1 Step -1
+        Local $oPara = $oParas.Item($i)
+        If Not IsObj($oPara) Then ContinueLoop
+        If $oPara.Range.ListFormat.ListType <> 0 Then ContinueLoop
+
+        Local $sOriginal = $oPara.Range.Text
+        Local $sStripped = _StripUnnecessaryLeadingNumbering($sOriginal)
+        If $sStripped = $sOriginal Then ContinueLoop
+
+        Local $oTextRange = $oPara.Range.Duplicate
+        If Not IsObj($oTextRange) Then ContinueLoop
+
+        Local $sTail = ""
+        If StringLen($sOriginal) > 0 Then
+            Local $sLastChar = StringRight($sOriginal, 1)
+            If $sLastChar = @CR Or $sLastChar = Chr(7) Then
+                $sTail = $sLastChar
+                $oTextRange.End = $oTextRange.End - 1
+            EndIf
+        EndIf
+
+        $oTextRange.Text = StringRegExpReplace($sStripped, "[\r\x07]+$", "") & $sTail
+        $iRemoved += 1
+    Next
+
+    Return $iRemoved
 EndFunc
 
 
@@ -219,23 +311,7 @@ Func _CleanUpDocument()
     $oFind.ClearFormatting()
     $oFind.Replacement.ClearFormatting()
     
-    ; Ky thuat Wildcard:
-    ; ^13 la ma ASCII cua phim Enter (Paragraph Mark)
-    ; {2,} nghia la tim nhung cho xuat hien tu 2 lan tro len
-    $oFind.Text = "[^13]{2,}"
-    $oFind.Replacement.Text = "^p" ; Thay the bang 1 dau xuong dong
-    
-    $oFind.Forward = True
-    $oFind.Wrap = 1 ; wdFindContinue
-    $oFind.Format = False
-    $oFind.MatchCase = False
-    $oFind.MatchWholeWord = False
-    $oFind.MatchWildcards = True ; BAT BUOC True de dung {2,}
-    $oFind.MatchSoundsLike = False
-    $oFind.MatchAllWordForms = False
-    
-    ; Thuc hien thay the tat ca (wdReplaceAll = 2)
-    $oFind.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
+    _CollapseExtraParagraphBreaks($oRange, True)
     
     $sLog &= "[OK] Da xoa dong trong thua (2+ Enter -> 1 Enter)" & @CRLF
     
@@ -265,6 +341,12 @@ Func _CleanUpDocument()
     Next
     
     $sLog &= "[OK] Da xoa khoang trang thua" & @CRLF
+
+    If GUICtrlRead($g_chkRemoveFakeNumbering) = $GUI_CHECKED Then
+        _UpdateProgress("Buoc 5: Bo so dau dong thua...")
+        Local $iRemoved = _RemoveFakeNumberingInRange($oRange)
+        $sLog &= "[OK] Da bo so dau dong thua: " & $iRemoved & @CRLF
+    EndIf
     
     ; --- HOAN TAT ---
     $sLog &= @CRLF & "=== HOAN TAT CLEAN UP ===" & @CRLF
@@ -388,22 +470,7 @@ Func _DoCleanUpWithOptions($bApplyAll, $bResetFont, $bResetPara, $bRemoveEmpty, 
     
     ; Xu ly dong trong
     If $bRemoveEmpty Then
-        Local $oFind = $oRange.Find
-        $oFind.ClearFormatting()
-        $oFind.Replacement.ClearFormatting()
-        
-        If $bCompact Then
-            ; 2+ Enter -> 1 Enter
-            $oFind.Text = "[^13]{2,}"
-            $oFind.Replacement.Text = "^p"
-        Else
-            ; 3+ Enter -> 2 Enter (giu 1 dong trong)
-            $oFind.Text = "[^13]{3,}"
-            $oFind.Replacement.Text = "^p^p"
-        EndIf
-        
-        $oFind.MatchWildcards = True
-        $oFind.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
+        _CollapseExtraParagraphBreaks($oRange, $bCompact)
         $sLog &= "[OK] Xu ly dong trong" & @CRLF
     EndIf
     
@@ -428,6 +495,11 @@ Func _DoCleanUpWithOptions($bApplyAll, $bResetFont, $bResetPara, $bRemoveEmpty, 
             $oFind2.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
         Next
         $sLog &= "[OK] Xoa khoang trang thua" & @CRLF
+    EndIf
+
+    If GUICtrlRead($g_chkRemoveFakeNumbering) = $GUI_CHECKED Then
+        Local $iRemoved = _RemoveFakeNumberingInRange($oRange)
+        $sLog &= "[OK] Bo so dau dong thua: " & $iRemoved & @CRLF
     EndIf
     
     $sLog &= @CRLF & "=== HOAN TAT ===" & @CRLF
@@ -733,7 +805,8 @@ Func _ShowPDFFixHelp()
     $sHelp &= "- Noi tu bi ngat (hyphen): Noi lai tu bi ngat dong (vi-" & @CRLF
     $sHelp &= "- Sua ky tu dac biet: Thay dau ngoac kep cong, gach ngang dai..." & @CRLF
     $sHelp &= "- Chuan hoa doan van: Xoa dong trong thua giua cac doan" & @CRLF
-    $sHelp &= "- Xoa tab thua: Gop nhieu Tab thanh 1" & @CRLF & @CRLF
+    $sHelp &= "- Xoa tab thua: Gop nhieu Tab thanh 1" & @CRLF
+    $sHelp &= "- Bo so dau dong thua: Xoa marker kieu 1. / a. o dau dong neu khong can" & @CRLF & @CRLF
     
     $sHelp &= "XU LY CACH DONG:" & @CRLF
     $sHelp &= "- Fix cach dong (1.5): Dat gian dong 1.5 (chuan luan van)" & @CRLF

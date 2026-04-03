@@ -6,6 +6,7 @@
 
 Func _CreateMainGUI()
     $g_hGUI = GUICreate($APP_TITLE & " v" & $APP_VERSION, 780, 750, -1, -1)
+    GUISetIcon(_GetAppIconSource(), -1, $g_hGUI)
     GUISetBkColor(0xF0F4F8)
 
     ; Header

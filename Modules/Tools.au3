@@ -36,6 +36,207 @@ Func _DoFindNext()
     $oFind.Execute($sFind)
 EndFunc
 
+Func _ConfigureParenthesesFind($oFind)
+    If Not IsObj($oFind) Then Return
+    $oFind.ClearFormatting()
+    $oFind.Replacement.ClearFormatting()
+    $oFind.Text = "\([!\)]@\)"
+    $oFind.Replacement.Text = ""
+    $oFind.MatchWildcards = True
+    $oFind.Forward = True
+    $oFind.Wrap = 0
+    $oFind.Format = False
+    $oFind.MatchCase = False
+    $oFind.MatchWholeWord = False
+EndFunc
+
+Func _CollectParenthesizedMatches($sText)
+    Local $aMatches[0][3]
+    Local $iLen = StringLen($sText)
+    Local $iPos = 1
+
+    While $iPos <= $iLen
+        Local $iStart = StringInStr($sText, "(", 0, 1, $iPos)
+        If $iStart = 0 Then ExitLoop
+
+        Local $iEnd = StringInStr($sText, ")", 0, 1, $iStart + 1)
+        If $iEnd = 0 Then ExitLoop
+
+        Local $sInner = StringMid($sText, $iStart + 1, $iEnd - $iStart - 1)
+        If StringStripWS($sInner, 3) <> "" And Not StringInStr($sInner, "(") And Not StringInStr($sInner, ")") Then
+            Local $iDeleteStart = $iStart
+            Local $sPrev = ""
+            Local $sNext = ""
+            If $iStart > 1 Then $sPrev = StringMid($sText, $iStart - 1, 1)
+            If $iEnd < $iLen Then $sNext = StringMid($sText, $iEnd + 1, 1)
+
+            If $sPrev = " " Then
+                If $sNext = "" Or $sNext = @CR Or $sNext = @LF Or $sNext = " " Or StringRegExp($sNext, "[\.,;:\!\?\)\]]") Then
+                    $iDeleteStart -= 1
+                EndIf
+            EndIf
+
+            Local $iCount = UBound($aMatches, 1)
+            ReDim $aMatches[$iCount + 1][3]
+            $aMatches[$iCount][0] = $iDeleteStart
+            $aMatches[$iCount][1] = $iEnd
+            $aMatches[$iCount][2] = "(" & $sInner & ")"
+        EndIf
+
+        $iPos = $iEnd + 1
+    WEnd
+
+    Return $aMatches
+EndFunc
+
+Func _ParenthesesPreviewContext($sText, $iStart1Based, $iEnd1Based)
+    Local $iContext = 28
+    Local $iStart = $iStart1Based - $iContext
+    Local $iLen = ($iEnd1Based - $iStart1Based + 1) + ($iContext * 2)
+
+    If $iStart < 1 Then
+        $iLen -= (1 - $iStart)
+        $iStart = 1
+    EndIf
+    If $iLen < 1 Then $iLen = 1
+
+    Local $sSnippet = StringMid($sText, $iStart, $iLen)
+    $sSnippet = StringReplace($sSnippet, @CR, " ")
+    $sSnippet = StringReplace($sSnippet, @LF, " ")
+    $sSnippet = StringRegExpReplace($sSnippet, "\s+", " ")
+    $sSnippet = StringStripWS($sSnippet, 3)
+    If $iStart > 1 Then $sSnippet = "..." & $sSnippet
+    If ($iStart + $iLen - 1) < StringLen($sText) Then $sSnippet &= "..."
+    Return $sSnippet
+EndFunc
+
+Func _DeleteParenthesizedMatchesInWordRange($oScopeRange, $aMatches)
+    If Not IsObj($oScopeRange) Or Not IsArray($aMatches) Then Return 0
+
+    Local $iRemoved = 0
+    For $i = 0 To UBound($aMatches, 1) - 1
+        If _DeleteFirstParenthesizedTextInScope($oScopeRange, $aMatches[$i][2]) Then
+            $iRemoved += 1
+        EndIf
+    Next
+    Return $iRemoved
+EndFunc
+
+Func _DeleteFirstParenthesizedTextInScope($oScopeRange, $sTargetText)
+    If Not IsObj($oScopeRange) Or $sTargetText = "" Then Return False
+
+    Local $oSearch = $oScopeRange.Duplicate
+    Local $oFind = $oSearch.Find
+    If Not IsObj($oFind) Then Return False
+
+    $oFind.ClearFormatting()
+    $oFind.Replacement.ClearFormatting()
+
+    Local $bFound = $oFind.Execute($sTargetText, False, False, False, False, False, True, 1, False, "", 0)
+    If Not $bFound Then Return False
+
+    Local $iStart = $oSearch.Start
+    Local $iEnd = $oSearch.End
+    Local $sPrev = ""
+    Local $sNext = ""
+
+    If $iStart > 0 Then $sPrev = $g_oDoc.Range($iStart - 1, $iStart).Text
+    If $iEnd < $g_oDoc.Content.End Then $sNext = $g_oDoc.Range($iEnd, $iEnd + 1).Text
+
+    If $sPrev = " " Then
+        If $sNext = "" Or $sNext = @CR Or $sNext = @LF Or $sNext = " " Or StringRegExp($sNext, "[\.,;:\!\?\)\]]") Then
+            $iStart -= 1
+        EndIf
+    EndIf
+
+    Local $oDeleteRange = $g_oDoc.Range($iStart, $iEnd)
+    If Not IsObj($oDeleteRange) Then Return False
+    $oDeleteRange.Text = ""
+    Return True
+EndFunc
+
+Func _RemoveParenthesizedPhrasesInSelection()
+    If Not _CheckConnection() Then Return
+    If Not IsObj($g_oWord) Or Not IsObj($g_oWord.Selection) Then Return
+
+    Local $oSelectionRange = $g_oWord.Selection.Range
+    If Not IsObj($oSelectionRange) Then Return
+
+    If $oSelectionRange.Start = $oSelectionRange.End Then
+        MsgBox($MB_ICONWARNING, "Thong bao", "Hay boi den vung can xoa truoc.")
+        Return
+    EndIf
+
+    _RemoveParenthesizedPhrasesInRange($oSelectionRange, "vung chon")
+EndFunc
+
+Func _RemoveParenthesizedPhrasesDocument()
+    If Not _CheckConnection() Then Return
+    _RemoveParenthesizedPhrasesInRange($g_oDoc.Content, "toan bo tai lieu")
+EndFunc
+
+Func _PreviewParenthesizedPhrases()
+    If Not _CheckConnection() Then Return
+
+    Local $oRange = 0
+    Local $sScopeLabel = "toan bo tai lieu"
+    Local $oSel = $g_oWord.Selection
+    If IsObj($oSel) And $oSel.Type <> 1 Then
+        $oRange = $oSel.Range
+        $sScopeLabel = "vung chon"
+    Else
+        $oRange = $g_oDoc.Content
+    EndIf
+
+    Local $aMatches = _CollectParenthesizedMatches($oRange.Text)
+    If Not IsArray($aMatches) Or UBound($aMatches, 1) = 0 Then
+        MsgBox($MB_ICONINFORMATION, "Xem truoc (...)", "Khong tim thay cum nao dang (...) trong " & $sScopeLabel & ".")
+        Return
+    EndIf
+
+    Local $sPreview = "XEM TRUOC CUM (...) SE BI XOA - " & StringUpper($sScopeLabel) & @CRLF & @CRLF & _
+        "Tong so: " & UBound($aMatches, 1) & @CRLF & _
+        "Pham vi: " & $sScopeLabel & @CRLF & @CRLF
+
+    Local $iLimit = 40
+    For $i = 0 To UBound($aMatches, 1) - 1
+        If $i = $iLimit Then
+            $sPreview &= "... va " & (UBound($aMatches, 1) - $iLimit) & " cum khac"
+            ExitLoop
+        EndIf
+        $sPreview &= ($i + 1) & ". " & $aMatches[$i][2] & " | " & _ParenthesesPreviewContext($oRange.Text, $aMatches[$i][0], $aMatches[$i][1]) & @CRLF
+    Next
+
+    _LogPreview($sPreview)
+    MsgBox($MB_ICONINFORMATION, "Xem truoc (...)", $sPreview)
+EndFunc
+
+Func _RemoveParenthesizedPhrasesInRange($oRange, $sScopeLabel)
+    If Not IsObj($oRange) Then Return
+
+    Local $aMatches = _CollectParenthesizedMatches($oRange.Text)
+    If Not IsArray($aMatches) Or UBound($aMatches, 1) = 0 Then
+        _UpdateProgress("Khong tim thay cum (...) trong " & $sScopeLabel)
+        MsgBox($MB_ICONINFORMATION, "Thong bao", "Khong tim thay cum nao dang (...) trong " & $sScopeLabel & ".")
+        Return
+    EndIf
+
+    _UpdateProgress("Dang xoa cum (...) trong " & $sScopeLabel & "...")
+    Local $iRemoved = _DeleteParenthesizedMatchesInWordRange($oRange, $aMatches)
+    If $iRemoved = 0 Then
+        _UpdateProgress("Khong xoa duoc cum (...) trong " & $sScopeLabel)
+        MsgBox($MB_ICONWARNING, "Thong bao", "Da tim thay cum (...), nhung Word khong cho phep sua noi dung trong " & $sScopeLabel & ".")
+        Return
+    EndIf
+
+    _UpdateProgress("Da xoa " & $iRemoved & " cum (...) trong " & $sScopeLabel)
+    MsgBox($MB_ICONINFORMATION, "Hoan tat", _
+        "Da xoa " & $iRemoved & " cum (...) trong " & $sScopeLabel & "." & @CRLF & @CRLF & _
+        "Ho tro 2 che do:" & @CRLF & _
+        "- Xoa vung chon" & @CRLF & _
+        "- Xoa toan bo tai lieu")
+EndFunc
+
 ; Resize Images
 Func _ResizeImages()
     If Not _CheckConnection() Then Return

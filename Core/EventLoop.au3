@@ -6,6 +6,7 @@
 
 ; Khoi tao ung dung
 Func _InitApplication()
+    TraySetIcon(_GetAppIconSource())
     _CreateMainGUI()
     _RefreshWordDocsList()
     _MainLoop()
@@ -119,6 +120,12 @@ Func _MainLoop()
                 _SafeExecute("_DoFindReplace")
             Case $g_btnFindNext
                 _DoFindNext()
+            Case $g_btnPreviewParentheses
+                _SafeExecute("_PreviewParenthesizedPhrases")
+            Case $g_btnRemoveParenthesesText
+                _SafeExecute("_RemoveParenthesizedPhrasesDocument")
+            Case $g_btnRemoveParenthesesSelection
+                _SafeExecute("_RemoveParenthesizedPhrasesInSelection")
             Case $g_btnResizeImages
                 _SafeExecute("_ResizeImages")
             Case $g_btnCenterImages
@@ -401,6 +408,12 @@ Func _MainLoop()
                 _SafeExecute("_RemoveCommentsSelection")
             Case $g_btnUnlinkFields
                 _SafeExecute("_UnlinkAllFields")
+            Case $g_btnPreviewCitations
+                _SafeExecute("_PreviewBracketCitations")
+            Case $g_btnRemoveCitationsSel
+                _SafeExecute("_RemoveBracketCitationsSelection")
+            Case $g_btnRemoveCitationsDoc
+                _SafeExecute("_RemoveBracketCitationsDocument")
             Case $g_btnFixHeadingNumberDots
                 _SafeExecute("_FixHeadingNumberDots")
                 

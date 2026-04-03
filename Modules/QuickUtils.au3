@@ -616,7 +616,398 @@ Func _UnlinkAllFields()
 EndFunc
 
 ; ============================================
-; 11. HEADING NUMBER CLEANUP - Sua dau cham de muc
+; 11. CITATION CLEANUP - Xoa trich dan [4], (Nguyen, 2020)
+; ============================================
+
+Func _RemoveBracketCitationsSelection()
+    If Not _CheckConnection() Then Return
+
+    Local $oSel = $g_oWord.Selection
+    If Not IsObj($oSel) Or $oSel.Type = 1 Then
+        MsgBox($MB_ICONWARNING, "Loi", "Chon vung van ban truoc khi xoa trich dan!")
+        Return
+    EndIf
+
+    _RemoveBracketCitationsInRange($oSel.Range, "vung chon")
+EndFunc
+
+Func _RemoveBracketCitationsDocument()
+    If Not _CheckConnection() Then Return
+    _RemoveBracketCitationsInRange($g_oDoc.Content, "toan bo tai lieu")
+EndFunc
+
+Func _PreviewBracketCitations()
+    If Not _CheckConnection() Then Return
+
+    Local $oRange = 0
+    Local $sScopeLabel = "toan bo tai lieu"
+    Local $oSel = $g_oWord.Selection
+    If IsObj($oSel) And $oSel.Type <> 1 Then
+        $oRange = $oSel.Range
+        $sScopeLabel = "vung chon"
+    Else
+        $oRange = $g_oDoc.Content
+    EndIf
+
+    Local $sFilter = StringStripWS(GUICtrlRead($g_inputCitationFilter), 3)
+    Local $aFilter = _ParseCitationFilter($sFilter)
+    If $sFilter <> "" And @error Then
+        MsgBox($MB_ICONWARNING, "Loi", _
+            "Bo loc citation khong hop le." & @CRLF & @CRLF & _
+            "Vi du hop le:" & @CRLF & _
+            "- 2,5" & @CRLF & _
+            "- 2;5;7" & @CRLF & _
+            "- 2, 5-7")
+        Return
+    EndIf
+
+    Local $iMode = _GetCitationMode()
+    Local $aMatches = _CollectCitationMatches($oRange.Text, $aFilter, $iMode)
+    If Not IsArray($aMatches) Or UBound($aMatches, 1) = 0 Then
+        MsgBox($MB_ICONINFORMATION, "Xem truoc citation", _
+            "Khong tim thay citation phu hop trong " & $sScopeLabel & "." & @CRLF & @CRLF & _
+            _BuildCitationModeHint($iMode) & @CRLF & _
+            _BuildCitationFilterHint($sFilter))
+        Return
+    EndIf
+
+    Local $sPreview = "XEM TRUOC CITATION SE BI XOA - " & StringUpper($sScopeLabel) & @CRLF & @CRLF & _
+        _BuildCitationModeHint($iMode) & @CRLF & _
+        _BuildCitationFilterHint($sFilter) & @CRLF & _
+        "Tong so: " & UBound($aMatches, 1) & @CRLF & @CRLF
+
+    Local $iLimit = 40
+    For $i = 0 To UBound($aMatches, 1) - 1
+        If $i = $iLimit Then
+            $sPreview &= "... va " & (UBound($aMatches, 1) - $iLimit) & " citation khac"
+            ExitLoop
+        EndIf
+        $sPreview &= ($i + 1) & ". " & $aMatches[$i][2] & " | " & _CitationPreviewContext($oRange.Text, $aMatches[$i][0], $aMatches[$i][1]) & @CRLF
+    Next
+
+    _LogPreview($sPreview)
+    MsgBox($MB_ICONINFORMATION, "Xem truoc citation", $sPreview)
+EndFunc
+
+Func _RemoveBracketCitationsInRange($oRange, $sScopeLabel)
+    If Not IsObj($oRange) Then Return
+
+    Local $sFilter = StringStripWS(GUICtrlRead($g_inputCitationFilter), 3)
+    Local $aFilter = _ParseCitationFilter($sFilter)
+    If $sFilter <> "" And @error Then
+        MsgBox($MB_ICONWARNING, "Loi", _
+            "Bo loc citation khong hop le." & @CRLF & @CRLF & _
+            "Vi du hop le:" & @CRLF & _
+            "- 2,5" & @CRLF & _
+            "- 2;5;7" & @CRLF & _
+            "- 2, 5-7")
+        Return
+    EndIf
+
+    Local $iMode = _GetCitationMode()
+
+    _UpdateProgress("Dang xoa trich dan [n] trong " & $sScopeLabel & "...")
+
+    Local $sText = $oRange.Text
+    Local $aMatches = _CollectCitationMatches($sText, $aFilter, $iMode)
+    If Not IsArray($aMatches) Or UBound($aMatches, 1) = 0 Then
+        _UpdateProgress("Khong tim thay trich dan [n] trong " & $sScopeLabel)
+        MsgBox($MB_ICONINFORMATION, "Thong bao", _
+            "Khong tim thay trich dan phu hop trong " & $sScopeLabel & "." & @CRLF & @CRLF & _
+            _BuildCitationModeHint($iMode) & @CRLF & _
+            _BuildCitationFilterHint($sFilter))
+        Return
+    EndIf
+
+    Local $iRemoved = _DeleteCitationMatchesInWordRange($oRange, $aMatches)
+
+    If $iRemoved = 0 Then
+        _UpdateProgress("Khong xoa duoc citation trong " & $sScopeLabel)
+        MsgBox($MB_ICONWARNING, "Thong bao", _
+            "Da tim thay citation, nhung Word khong cho phep sua noi dung trong " & $sScopeLabel & ".")
+        Return
+    EndIf
+
+    _CleanupCitationSpacing($oRange)
+    _UpdateProgress("Da xoa " & $iRemoved & " trich dan trong " & $sScopeLabel)
+    MsgBox($MB_ICONINFORMATION, "Hoan tat", _
+        "Da xoa " & $iRemoved & " trich dan trong " & $sScopeLabel & "." & @CRLF & @CRLF & _
+        _BuildCitationModeHint($iMode) & @CRLF & _
+        _BuildCitationFilterHint($sFilter) & @CRLF & @CRLF & _
+        "Ho tro cac dang:" & @CRLF & _
+        "- [4]" & @CRLF & _
+        "- [12, 15]" & @CRLF & _
+        "- [3-5]" & @CRLF & _
+        "- [4][5][6]" & @CRLF & _
+        "- (Nguyen, 2020)" & @CRLF & _
+        "- (Smith et al., 2021; Tran, 2022)")
+EndFunc
+
+Func _CollectCitationMatches($sText, $aFilter = 0, $iMode = 0)
+    Local $aMatches[0][3]
+    Local $iLen = StringLen($sText)
+    Local $iPos = 1
+
+    While $iPos <= $iLen
+        Local $sOpen = StringMid($sText, $iPos, 1)
+        Local $sClose = ""
+        If $sOpen = "[" Then
+            $sClose = "]"
+        ElseIf $sOpen = "(" Then
+            $sClose = ")"
+        Else
+            $iPos += 1
+            ContinueLoop
+        EndIf
+
+        Local $iClose = StringInStr($sText, $sClose, 0, 1, $iPos + 1)
+        If $iClose = 0 Then ExitLoop
+
+        Local $sInner = StringMid($sText, $iPos + 1, $iClose - $iPos - 1)
+        Local $iCitationType = _GetCitationType($sInner, $sOpen, $aFilter, $iMode)
+        If $iCitationType <> 0 Then
+            Local $iDeleteStart = $iPos
+            Local $sPrev = ""
+            Local $sNext = ""
+            If $iPos > 1 Then $sPrev = StringMid($sText, $iPos - 1, 1)
+            If $iClose < $iLen Then $sNext = StringMid($sText, $iClose + 1, 1)
+
+            If $sPrev = " " Then
+                If $sNext = "" Or $sNext = @CR Or $sNext = @LF Or $sNext = " " Or StringRegExp($sNext, "[\.,;:\!\?\)\]]") Then
+                    $iDeleteStart -= 1
+                EndIf
+            EndIf
+
+            Local $iCount = UBound($aMatches, 1)
+            ReDim $aMatches[$iCount + 1][3]
+            $aMatches[$iCount][0] = $iDeleteStart
+            $aMatches[$iCount][1] = $iClose
+            $aMatches[$iCount][2] = $sOpen & $sInner & $sClose
+        EndIf
+
+        $iPos = $iClose + 1
+    WEnd
+
+    Return $aMatches
+EndFunc
+
+Func _CitationPreviewContext($sText, $iStart1Based, $iEnd1Based)
+    Local $iContext = 28
+    Local $iStart = $iStart1Based - $iContext
+    Local $iLen = ($iEnd1Based - $iStart1Based + 1) + ($iContext * 2)
+
+    If $iStart < 1 Then
+        $iLen -= (1 - $iStart)
+        $iStart = 1
+    EndIf
+    If $iLen < 1 Then $iLen = 1
+
+    Local $sSnippet = StringMid($sText, $iStart, $iLen)
+    $sSnippet = StringReplace($sSnippet, @CR, " ")
+    $sSnippet = StringReplace($sSnippet, @LF, " ")
+    $sSnippet = StringRegExpReplace($sSnippet, "\s+", " ")
+    $sSnippet = StringStripWS($sSnippet, 3)
+    If $iStart > 1 Then $sSnippet = "..." & $sSnippet
+    If ($iStart + $iLen - 1) < StringLen($sText) Then $sSnippet &= "..."
+    Return $sSnippet
+EndFunc
+
+Func _DeleteCitationMatchesInWordRange($oScopeRange, $aMatches)
+    If Not IsObj($oScopeRange) Or Not IsArray($aMatches) Then Return 0
+
+    Local $iRemoved = 0
+    For $i = 0 To UBound($aMatches, 1) - 1
+        If _DeleteFirstCitationTextInScope($oScopeRange, $aMatches[$i][2]) Then
+            $iRemoved += 1
+        EndIf
+    Next
+
+    Return $iRemoved
+EndFunc
+
+Func _DeleteFirstCitationTextInScope($oScopeRange, $sCitationText)
+    If Not IsObj($oScopeRange) Or $sCitationText = "" Then Return False
+
+    Local $oSearch = $oScopeRange.Duplicate
+    Local $oFind = $oSearch.Find
+    If Not IsObj($oFind) Then Return False
+
+    $oFind.ClearFormatting()
+    $oFind.Replacement.ClearFormatting()
+
+    Local $bFound = $oFind.Execute($sCitationText, False, False, False, False, False, True, 1, False, "", 0)
+    If Not $bFound Then Return False
+
+    Local $iStart = $oSearch.Start
+    Local $iEnd = $oSearch.End
+    Local $sPrev = ""
+    Local $sNext = ""
+
+    If $iStart > 0 Then $sPrev = $g_oDoc.Range($iStart - 1, $iStart).Text
+    If $iEnd < $g_oDoc.Content.End Then $sNext = $g_oDoc.Range($iEnd, $iEnd + 1).Text
+
+    If $sPrev = " " Then
+        If $sNext = "" Or $sNext = @CR Or $sNext = @LF Or $sNext = " " Or StringRegExp($sNext, "[\.,;:\!\?\)\]]") Then
+            $iStart -= 1
+        EndIf
+    EndIf
+
+    Local $oDeleteRange = $g_oDoc.Range($iStart, $iEnd)
+    If Not IsObj($oDeleteRange) Then Return False
+
+    $oDeleteRange.Text = ""
+    Return True
+EndFunc
+
+Func _IsBracketCitationText($sInner)
+    Local $sValue = StringStripWS($sInner, 3)
+    If $sValue = "" Then Return False
+
+    Return StringRegExp($sValue, "^\d+(?:\s*[-,;]\s*\d+)*$")
+EndFunc
+
+Func _GetCitationType($sInner, $sOpen, $aFilter = 0, $iMode = 0)
+    Local $sValue = StringStripWS($sInner, 3)
+    If $sValue = "" Then Return 0
+
+    If $sOpen = "[" Then
+        If Not _IsBracketCitationText($sValue) Then Return 0
+        If $iMode = 2 Then Return 0
+        If IsArray($aFilter) And Not _BracketCitationMatchesFilter($sValue, $aFilter) Then Return 0
+        Return 1
+    EndIf
+
+    ; Khi co bo loc [n], chi xoa citation kieu [n], bo qua author-year.
+    If IsArray($aFilter) Then Return 0
+    If $iMode = 1 Then Return 0
+
+    If StringLen($sValue) > 120 Then Return 0
+    If Not StringRegExp($sValue, "(19|20)\d{2}[a-z]?") Then Return 0
+    If Not StringRegExp($sValue, "[A-Za-z]") Then Return 0
+    If Not StringRegExp($sValue, "[,;]") Then Return 0
+    If StringRegExp($sValue, "^[\d\s,;.-]+$") Then Return 0
+
+    ; Cac dang pho bien: Nguyen, 2020 | Smith et al., 2021; Tran, 2022
+    If StringRegExp($sValue, "^[A-Za-zÀ-ỹĐđ][^()]{0,110}(19|20)\d{2}[a-z]?$") Then Return 2
+
+    Return 0
+EndFunc
+
+Func _ParseCitationFilter($sFilter)
+    If $sFilter = "" Then Return 0
+
+    Local $sNormalized = StringRegExpReplace($sFilter, "[;\|]+", ",")
+    $sNormalized = StringRegExpReplace($sNormalized, "\s+", "")
+    If $sNormalized = "" Then Return SetError(1, 0, 0)
+
+    Local $aParts = StringSplit($sNormalized, ",", 2)
+    If Not IsArray($aParts) Or UBound($aParts) = 0 Then Return SetError(1, 0, 0)
+
+    Local $aFilter[0][2]
+    For $i = 0 To UBound($aParts) - 1
+        Local $sPart = $aParts[$i]
+        If $sPart = "" Then ContinueLoop
+
+        Local $iStart = 0, $iEnd = 0
+        If StringRegExp($sPart, "^\d+$") Then
+            $iStart = Int($sPart)
+            $iEnd = $iStart
+        ElseIf StringRegExp($sPart, "^\d+-\d+$") Then
+            Local $aRange = StringSplit($sPart, "-", 2)
+            $iStart = Int($aRange[0])
+            $iEnd = Int($aRange[1])
+            If $iEnd < $iStart Then Return SetError(1, 0, 0)
+        Else
+            Return SetError(1, 0, 0)
+        EndIf
+
+        Local $iCount = UBound($aFilter, 1)
+        ReDim $aFilter[$iCount + 1][2]
+        $aFilter[$iCount][0] = $iStart
+        $aFilter[$iCount][1] = $iEnd
+    Next
+
+    If UBound($aFilter, 1) = 0 Then Return SetError(1, 0, 0)
+    Return $aFilter
+EndFunc
+
+Func _BracketCitationMatchesFilter($sValue, $aFilter)
+    Local $sNormalized = StringRegExpReplace($sValue, "\s+", "")
+    Local $aParts = StringSplit($sNormalized, ",", 2)
+    If Not IsArray($aParts) Then Return False
+
+    For $i = 0 To UBound($aParts) - 1
+        If $aParts[$i] = "" Then ContinueLoop
+
+        Local $iStart = 0, $iEnd = 0
+        If StringRegExp($aParts[$i], "^\d+$") Then
+            $iStart = Int($aParts[$i])
+            $iEnd = $iStart
+        ElseIf StringRegExp($aParts[$i], "^\d+-\d+$") Then
+            Local $aRange = StringSplit($aParts[$i], "-", 2)
+            $iStart = Int($aRange[0])
+            $iEnd = Int($aRange[1])
+        Else
+            Return False
+        EndIf
+
+        For $j = 0 To UBound($aFilter, 1) - 1
+            If $iStart <= $aFilter[$j][1] And $iEnd >= $aFilter[$j][0] Then Return True
+        Next
+    Next
+
+    Return False
+EndFunc
+
+Func _BuildCitationFilterHint($sFilter)
+    If $sFilter = "" Then Return "Bo loc [n]: tat ca."
+    Return "Bo loc dang dung: [" & $sFilter & "]"
+EndFunc
+
+Func _GetCitationMode()
+    Local $sMode = GUICtrlRead($g_cboCitationMode)
+    Switch $sMode
+        Case "Chi [n]"
+            Return 1
+        Case "Chi tac gia-nam"
+            Return 2
+    EndSwitch
+    Return 0
+EndFunc
+
+Func _BuildCitationModeHint($iMode)
+    Switch $iMode
+        Case 1
+            Return "Che do: chi xoa citation so [n]."
+        Case 2
+            Return "Che do: chi xoa citation tac gia-nam (Author, 2020)."
+    EndSwitch
+    Return "Che do: xoa tat ca citation ho tro."
+EndFunc
+
+Func _CleanupCitationSpacing($oRange)
+    Local $oTarget = $g_oDoc.Content
+    If IsObj($oRange) Then $oTarget = $oRange.Duplicate
+
+    Local $oFind = $oTarget.Find
+    If Not IsObj($oFind) Then Return
+
+    For $i = 1 To 3
+        $oFind.ClearFormatting()
+        $oFind.Replacement.ClearFormatting()
+        $oFind.Execute("  ", False, False, False, False, False, True, 1, False, " ", $WD_REPLACE_ALL)
+    Next
+
+    Local $aPairs[7][2] = [[" .", "."], [" ,", ","], [" ;", ";"], [" :", ":"], [" !", "!"], [" ?", "?"], [" )", ")"]]
+    For $i = 0 To UBound($aPairs, 1) - 1
+        $oFind.ClearFormatting()
+        $oFind.Replacement.ClearFormatting()
+        $oFind.Execute($aPairs[$i][0], False, False, False, False, False, True, 1, False, $aPairs[$i][1], $WD_REPLACE_ALL)
+    Next
+EndFunc
+
+; ============================================
+; 12. HEADING NUMBER CLEANUP - Sua dau cham de muc
 ; ============================================
 
 ; Chuan hoa tien to de muc:

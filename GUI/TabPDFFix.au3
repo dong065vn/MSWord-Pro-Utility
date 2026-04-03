@@ -15,9 +15,10 @@ Func _CreateTabPDFFix()
     $g_chkSpecialChars = _CreateCheckbox(" Sua ky tu dac biet", 50, 210, 200, 22, True)
     $g_chkParagraphs = _CreateCheckbox(" Chuan hoa doan van", 260, 210, 200, 22, True)
     $g_chkTabs = _CreateCheckbox(" Xoa tab thua", 470, 210, 200, 22, True)
-    $g_chkVietnamese = _CreateCheckbox(" Sua loi font tieng Viet", 50, 235, 200, 22)
-    $g_chkPageNumbers = _CreateCheckbox(" Xoa so trang loi", 260, 235, 200, 22)
-    $g_chkFixQuotes = _CreateCheckbox(" Sua dau ngoac kep", 470, 235, 200, 22, True)
+    $g_chkVietnamese = _CreateCheckbox(" Sua loi font tieng Viet", 50, 235, 150, 22)
+    $g_chkPageNumbers = _CreateCheckbox(" Xoa so trang loi", 220, 235, 150, 22)
+    $g_chkFixQuotes = _CreateCheckbox(" Sua dau ngoac kep", 390, 235, 150, 22, True)
+    $g_chkRemoveFakeNumbering = _CreateCheckbox(" Bo so dau dong thua", 560, 235, 150, 22)
     _EndGroup()
 
     ; Xu ly cach dong

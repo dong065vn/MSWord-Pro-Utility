@@ -18,8 +18,8 @@
 #include <MsgBoxConstants.au3>
 
 ; === VERSION ===
-Global Const $VERSION = "6.1.2"
-Global Const $APP_VERSION = "6.1.2"
+Global Const $VERSION = "6.1.8"
+Global Const $APP_VERSION = "6.1.8"
 Global Const $APP_TITLE = "PDF to Word Fixer Pro"
 
 ; === WORD CONSTANTS ===
@@ -63,7 +63,7 @@ Global $g_lblStatus, $g_hTab, $g_editPreview, $g_lblProgress
 
 ; === Tab 1: PDF Fix ===
 Global $g_chkLineBreaks, $g_chkExtraSpaces, $g_chkHyphenation, $g_chkSpecialChars
-Global $g_chkParagraphs, $g_chkTabs, $g_chkVietnamese, $g_chkPageNumbers, $g_chkFixQuotes
+Global $g_chkParagraphs, $g_chkTabs, $g_chkVietnamese, $g_chkPageNumbers, $g_chkFixQuotes, $g_chkRemoveFakeNumbering
 Global $g_chkFixLineSpacing, $g_chkResetSpacing, $g_chkRemoveEmptyLines, $g_chkFixSpacingBefore
 Global $g_btnFixSelected, $g_btnFixAll, $g_btnQuickFix, $g_btnUndoFix, $g_btnCleanUp, $g_btnFixLayout, $g_btnPDFFixHelp
 
@@ -81,6 +81,7 @@ Global $g_btnAutoNumImg, $g_btnAutoNumTbl, $g_btnAutoNumEq, $g_btnRemoveNumEq
 ; === Tab 3: Tools ===
 Global $g_inputFind, $g_inputReplace, $g_chkMatchCase, $g_chkWholeWord
 Global $g_btnFindNext, $g_btnFindReplace
+Global $g_btnPreviewParentheses, $g_btnRemoveParenthesesSelection, $g_btnRemoveParenthesesText
 Global $g_btnResizeImages, $g_btnCenterImages, $g_btnAutoCaption, $g_btnRemoveImages
 Global $g_btnAutoFitTable, $g_btnAutoFitWindow, $g_btnTableCaption, $g_btnTableBorder
 Global $g_btnWordCount, $g_btnCheckSpelling, $g_btnCheckFormat
@@ -134,6 +135,9 @@ Global $g_btnToggleSub, $g_btnToggleSuper
 Global $g_btnIncreaseIndent, $g_btnDecreaseIndent, $g_btnRemoveFirstIndent, $g_btnSetFirstIndent
 Global $g_btnInsertSpecialChar, $g_btnAddBookmark, $g_btnGoToBookmark, $g_btnDeleteBookmark
 Global $g_btnShowDocInfo, $g_btnRemoveHighlightSel, $g_btnRemoveCommentsSel, $g_btnUnlinkFields
+Global $g_btnRemoveCitationsSel, $g_btnRemoveCitationsDoc
+Global $g_btnPreviewCitations, $g_cboCitationMode
+Global $g_inputCitationFilter
 Global $g_inputHeadingPrefixFix, $g_inputHeadingSeparatorFix, $g_btnFixHeadingNumberDots
 
 ; === Tab 8: Smart Fix (NEW) ===
@@ -176,3 +180,10 @@ Func _ComErrorHandler($oError)
     ConsoleWrite("COM Error: " & $oError.description & " [0x" & Hex($oError.number) & "]" & @CRLF)
     Return SetError(1, 0, 0)
 EndFunc
+
+
+
+
+
+
+
