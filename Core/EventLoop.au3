@@ -50,20 +50,18 @@ Func _MainLoop()
                 _ShowPDFFixHelp()
             Case $g_btnUndoFix
                 _UndoAction()
+            Case $g_btnCleanUpAdv
+                _SafeExecute("_CleanUpDocumentAdvanced")
+            Case $g_btnFixTableSpacing
+                _SafeExecute("_FixTableSpacing")
+            Case $g_btnFixJustifyOnly
+                _SafeExecute("_FixJustifyOnly")
                 
             ; === TAB 2: FORMAT ===
             Case $g_btnApplyFormat
-                If Not $g_bProcessing Then
-                    $g_bProcessing = True
-                    _ApplyFormat(False)
-                    $g_bProcessing = False
-                EndIf
+                _SafeExecute1("_ApplyFormat", False)
             Case $g_btnApplySelection
-                If Not $g_bProcessing Then
-                    $g_bProcessing = True
-                    _ApplyFormat(True)
-                    $g_bProcessing = False
-                EndIf
+                _SafeExecute1("_ApplyFormat", True)
             Case $g_btnPresetVN
                 _LoadPresetVN()
             Case $g_btnPresetUS
@@ -71,23 +69,11 @@ Func _MainLoop()
             Case $g_btnCheckThesis
                 _SafeExecute("_CheckThesisFormat")
             Case $g_btnFormatH1
-                If Not $g_bProcessing Then
-                    $g_bProcessing = True
-                    _FormatHeading(1)
-                    $g_bProcessing = False
-                EndIf
+                _SafeExecute1("_FormatHeading", 1)
             Case $g_btnFormatH2
-                If Not $g_bProcessing Then
-                    $g_bProcessing = True
-                    _FormatHeading(2)
-                    $g_bProcessing = False
-                EndIf
+                _SafeExecute1("_FormatHeading", 2)
             Case $g_btnFormatH3
-                If Not $g_bProcessing Then
-                    $g_bProcessing = True
-                    _FormatHeading(3)
-                    $g_bProcessing = False
-                EndIf
+                _SafeExecute1("_FormatHeading", 3)
             Case $g_btnFormatCaption
                 _SafeExecute("_FormatCaption")
             Case $g_btnFormatNormal
@@ -135,17 +121,9 @@ Func _MainLoop()
             Case $g_btnRemoveImages
                 _SafeExecute("_RemoveAllImages")
             Case $g_btnAutoFitTable
-                If Not $g_bProcessing Then
-                    $g_bProcessing = True
-                    _AutoFitTables(1)
-                    $g_bProcessing = False
-                EndIf
+                _SafeExecute1("_AutoFitTables", 1)
             Case $g_btnAutoFitWindow
-                If Not $g_bProcessing Then
-                    $g_bProcessing = True
-                    _AutoFitTables(2)
-                    $g_bProcessing = False
-                EndIf
+                _SafeExecute1("_AutoFitTables", 2)
             Case $g_btnTableCaption
                 _SafeExecute("_AutoCaptionTbl")
             Case $g_btnTableBorder
@@ -171,23 +149,11 @@ Func _MainLoop()
             Case $g_btnFixTOCStyles
                 _SafeExecute("_FixAllTOCStyles")
             Case $g_btnFixTOC1
-                If Not $g_bProcessing Then
-                    $g_bProcessing = True
-                    _FixTOCStyle(1)
-                    $g_bProcessing = False
-                EndIf
+                _SafeExecute1("_FixTOCStyle", 1)
             Case $g_btnFixTOC2
-                If Not $g_bProcessing Then
-                    $g_bProcessing = True
-                    _FixTOCStyle(2)
-                    $g_bProcessing = False
-                EndIf
+                _SafeExecute1("_FixTOCStyle", 2)
             Case $g_btnFixTOC3
-                If Not $g_bProcessing Then
-                    $g_bProcessing = True
-                    _FixTOCStyle(3)
-                    $g_bProcessing = False
-                EndIf
+                _SafeExecute1("_FixTOCStyle", 3)
             Case $g_btnPreviewTOC
                 _PreviewTOCStyles()
             Case $g_btnAddReference
@@ -334,6 +300,8 @@ Func _MainLoop()
                 _BackupDocument()
             Case $g_btnSaveDoc
                 _SaveDocument()
+            Case $g_btnSafetyOptions
+                _ShowSafetyOptionsDialog()
                 
             ; === TAB 7: QUICK UTILS ===
             Case $g_btnPastePlain
@@ -434,6 +402,12 @@ Func _MainLoop()
                 _SafeExecute("_FixForThesisVN")
             Case $g_btnFixAPA
                 _SafeExecute("_FixForAPA")
+            Case $g_btnSmartAnalyzePro
+                _SafeExecute("_SmartAnalyzePro")
+            Case $g_btnSmartPreviewPro
+                _SafeExecute("_SmartPreviewPro")
+            Case $g_btnSmartFixPro
+                _SafeExecute("_SmartFixPro")
         EndSwitch
     WEnd
     

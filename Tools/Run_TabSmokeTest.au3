@@ -1,8 +1,10 @@
 ; Smoke test: mo app va click lan luot tat ca tab
 
 Global Const $APP_EXE = @ScriptDir & "\..\Main_compiled.exe"
-Global Const $APP_TITLE = "PDF to Word Fixer Pro v6.1"
+Global Const $APP_TITLE = "PDF to Word Fixer Pro v"
 Global Const $LOG_PATH = @ScriptDir & "\..\Tests\Logs\TabSmokeTest.log"
+
+Opt("WinTitleMatchMode", 2)
 
 DirCreate(@ScriptDir & "\..\Tests\Logs")
 FileDelete($LOG_PATH)
@@ -19,6 +21,9 @@ If Not FileExists($APP_EXE) Then
     _WriteLog("FAIL: Khong tim thay file build: " & $APP_EXE)
     Exit 1
 EndIf
+
+ProcessClose("Main_compiled.exe")
+Sleep(800)
 
 Local $hWnd = WinGetHandle($APP_TITLE)
 If $hWnd = "" Then
@@ -79,4 +84,5 @@ For $i = 0 To UBound($aTabs) - 1
 Next
 
 _WriteLog("PASS: Da chuyen het 9 tab ma khong thay app bi dong.")
+ProcessClose("Main_compiled.exe")
 Exit 0

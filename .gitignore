@@ -10,5 +10,7 @@ aut2exe_build.log
 Main.exe
 Main_compiled.exe
 Main_build_*.exe
+Main_compiled_v*.exe
 Releases/*.zip
 Releases/v*/
+Releases/RELEASE_NOTES_*.md

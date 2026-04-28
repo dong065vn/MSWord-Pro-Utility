@@ -4,13 +4,21 @@
 
 #include-once
 
-; Tao button voi style
+; Tao button phang, vuong goc tuyet doi
+; - Co mau: dung Label lam nut (vuong goc 100%, khong bi bo tron boi Windows theme)
+; - Khong mau: dung Button + SetWindowTheme (flat classic)
 Func _CreateButton($sText, $iX, $iY, $iW, $iH, $iBgColor = -1, $iFontSize = 9, $iFontWeight = 400)
-    Local $btn = GUICtrlCreateButton($sText, $iX, $iY, $iW, $iH)
-    If $iBgColor <> -1 Then GUICtrlSetBkColor($btn, $iBgColor)
-    If $iFontSize <> 9 Or $iFontWeight <> 400 Then
-        GUICtrlSetFont($btn, $iFontSize, $iFontWeight)
+    Local $btn
+    If $iBgColor <> -1 Then
+        $btn = GUICtrlCreateLabel($sText, $iX, $iY, $iW, $iH, _
+            BitOR($SS_CENTER, $SS_CENTERIMAGE, $SS_NOTIFY))
+        GUICtrlSetBkColor($btn, $iBgColor)
+        GUICtrlSetColor($btn, 0xFFFFFF)
+    Else
+        $btn = GUICtrlCreateButton($sText, $iX, $iY, $iW, $iH, $BS_FLAT)
+        _MakeButtonSquare($btn)
     EndIf
+    GUICtrlSetFont($btn, $iFontSize, $iFontWeight, 0, "Segoe UI")
     Return $btn
 EndFunc
 

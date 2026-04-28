@@ -11,6 +11,7 @@ Func _ApplyFormat($bSelOnly)
     If Not IsObj($oRange) Then Return
     If Not $bSelOnly And MsgBox($MB_YESNO, "Xac nhan", "Ap dung toan bo?") <> $IDYES Then Return
 
+    Local $aBatch = _Perf_BeginWordBatch("Ap dung dinh dang")
     _UpdateProgress("Dang ap dung dinh dang...")
 
     $oRange.Font.Name = GUICtrlRead($g_cboFont)
@@ -32,6 +33,7 @@ Func _ApplyFormat($bSelOnly)
         $g_oDoc.PageSetup.BottomMargin = Number(GUICtrlRead($g_inputBottomMargin)) * $CM_TO_POINTS
     EndIf
 
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da ap dung dinh dang!")
 EndFunc
 
@@ -155,9 +157,11 @@ Func _AddPageNumbers()
         "4 - Phai tren", "1")
     If @error Or $sChoice = "" Then Return
 
+    Local $aBatch = _Perf_BeginWordBatch("Them so trang")
     _UpdateProgress("Dang them so trang...")
     Local $oSections = $g_oDoc.Sections
-    For $i = 1 To $oSections.Count
+    Local $iSectionCount = _Perf_CollectionCount($oSections)
+    For $i = 1 To $iSectionCount
         Local $oSec = $oSections.Item($i)
         Switch $sChoice
             Case "1"
@@ -170,6 +174,7 @@ Func _AddPageNumbers()
                 $oSec.Headers(1).PageNumbers.Add(2)
         EndSwitch
     Next
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da them so trang!")
 EndFunc
 
@@ -179,23 +184,28 @@ Func _AddHeader()
     Local $sHeader = InputBox("Them Header", "Nhap noi dung:", "")
     If @error Then Return
 
+    Local $aBatch = _Perf_BeginWordBatch("Them header")
     _UpdateProgress("Dang them header...")
     Local $oSections = $g_oDoc.Sections
-    For $i = 1 To $oSections.Count
+    Local $iSectionCount = _Perf_CollectionCount($oSections)
+    For $i = 1 To $iSectionCount
         Local $oH = $oSections.Item($i).Headers(1)
         $oH.Range.Text = $sHeader
         $oH.Range.Font.Name = "Times New Roman"
         $oH.Range.Font.Size = 12
         $oH.Range.ParagraphFormat.Alignment = $WD_ALIGN_CENTER
     Next
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da them header!")
 EndFunc
 
 ; Remove Page Numbers
 Func _RemovePageNumbers()
     If Not _CheckConnection() Then Return
+    Local $aBatch = _Perf_BeginWordBatch("Xoa so trang")
     Local $oSections = $g_oDoc.Sections
-    For $i = 1 To $oSections.Count
+    Local $iSectionCount = _Perf_CollectionCount($oSections)
+    For $i = 1 To $iSectionCount
         Local $oSec = $oSections.Item($i)
         While $oSec.Footers(1).PageNumbers.Count > 0
             $oSec.Footers(1).PageNumbers.Item(1).Delete()
@@ -204,6 +214,7 @@ Func _RemovePageNumbers()
             $oSec.Headers(1).PageNumbers.Item(1).Delete()
         WEnd
     Next
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da xoa so trang")
 EndFunc
 
@@ -215,13 +226,15 @@ Func _AutoNumberImages()
     If $sPrefix = "" Then $sPrefix = "Hinh"
 
     Local $oShapes = $g_oDoc.InlineShapes
-    If Not IsObj($oShapes) Or $oShapes.Count = 0 Then
+    Local $iShapeCount = _Perf_CollectionCount($oShapes)
+    If Not IsObj($oShapes) Or $iShapeCount = 0 Then
         MsgBox($MB_ICONWARNING, "Thong bao", "Khong co hinh anh!")
         Return
     EndIf
 
     Local $n = 0
-    For $i = 1 To $oShapes.Count
+    Local $aBatch = _Perf_BeginWordBatch("Danh so hinh")
+    For $i = 1 To $iShapeCount
         Local $oShape = $oShapes.Item($i)
         If Not IsObj($oShape) Then ContinueLoop
         
@@ -239,6 +252,7 @@ Func _AutoNumberImages()
             $oR.ParagraphFormat.Alignment = $WD_ALIGN_CENTER
         EndIf
     Next
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da danh so " & $n & " hinh!")
 EndFunc
 
@@ -249,12 +263,14 @@ Func _AutoNumberTables()
     If @error Or $sPrefix = "" Then Return
 
     Local $oTables = $g_oDoc.Tables
-    If Not IsObj($oTables) Or $oTables.Count = 0 Then
+    Local $iTableCount = _Perf_CollectionCount($oTables)
+    If Not IsObj($oTables) Or $iTableCount = 0 Then
         MsgBox($MB_ICONWARNING, "Thong bao", "Khong co bang!")
         Return
     EndIf
 
-    For $i = 1 To $oTables.Count
+    Local $aBatch = _Perf_BeginWordBatch("Danh so bang")
+    For $i = 1 To $iTableCount
         Local $oR = $oTables.Item($i).Range
         $oR.Collapse($WD_COLLAPSE_START)
         $oR.InsertParagraphBefore()
@@ -264,14 +280,16 @@ Func _AutoNumberTables()
         $oR.Font.Size = 12
         $oR.ParagraphFormat.Alignment = $WD_ALIGN_CENTER
     Next
-    _UpdateProgress("Da danh so " & $oTables.Count & " bang!")
+    _Perf_EndWordBatch($aBatch)
+    _UpdateProgress("Da danh so " & $iTableCount & " bang!")
 EndFunc
 
 ; Number Equations
 Func _NumberEquations()
     If Not _CheckConnection() Then Return
     Local $oOMaths = $g_oDoc.OMaths
-    If Not IsObj($oOMaths) Or $oOMaths.Count = 0 Then
+    Local $iMathCount = _Perf_CollectionCount($oOMaths)
+    If Not IsObj($oOMaths) Or $iMathCount = 0 Then
         MsgBox($MB_ICONWARNING, "Thong bao", "Khong co cong thuc!")
         Return
     EndIf
@@ -279,12 +297,14 @@ Func _NumberEquations()
     Local $sChapter = GUICtrlRead($g_inputChapterNum)
     If $sChapter = "" Then $sChapter = "1"
 
-    For $i = 1 To $oOMaths.Count
+    Local $aBatch = _Perf_BeginWordBatch("Danh so cong thuc")
+    For $i = 1 To $iMathCount
         Local $oR = $oOMaths.Item($i).Range
         $oR.Collapse($WD_COLLAPSE_END)
         $oR.InsertAfter(@TAB & "(" & $sChapter & "." & $i & ")")
     Next
-    _UpdateProgress("Da danh so " & $oOMaths.Count & " cong thuc!")
+    _Perf_EndWordBatch($aBatch)
+    _UpdateProgress("Da danh so " & $iMathCount & " cong thuc!")
 EndFunc
 
 ; Remove Equation Numbers

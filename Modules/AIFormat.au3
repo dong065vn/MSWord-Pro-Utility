@@ -106,9 +106,9 @@ Func _AI_ShowSettings()
 
     ; === Preset buttons ===
     GUICtrlCreateGroup(" Mau co san ", 15, 265, 420, 55)
-    Local $btnPresetDH = GUICtrlCreateButton("Dai hoc (13pt)", 30, 283, 120, 28)
-    Local $btnPresetTHS = GUICtrlCreateButton("Thac si (14pt)", 160, 283, 120, 28)
-    Local $btnPresetDefault = GUICtrlCreateButton("Mac dinh", 290, 283, 100, 28)
+    Local $btnPresetDH = _CreateSquareButton("Dai hoc (13pt)", 30, 283, 120, 28, $BS_FLAT)
+    Local $btnPresetTHS = _CreateSquareButton("Thac si (14pt)", 160, 283, 120, 28, $BS_FLAT)
+    Local $btnPresetDefault = _CreateSquareButton("Mac dinh", 290, 283, 100, 28, $BS_FLAT)
     GUICtrlCreateGroup("", -99, -99, 1, 1)
 
     ; === Preview ===
@@ -119,9 +119,9 @@ Func _AI_ShowSettings()
     GUICtrlCreateGroup("", -99, -99, 1, 1)
 
     ; === Buttons ===
-    Local $btnSave = GUICtrlCreateButton("Luu cai dat", 50, 455, 150, 35)
+    Local $btnSave = _CreateSquareButton("Luu cai dat", 50, 455, 150, 35, $BS_FLAT)
     GUICtrlSetFont(-1, 11, 700, 0, "Segoe UI")
-    Local $btnCancel = GUICtrlCreateButton("Huy", 250, 455, 150, 35)
+    Local $btnCancel = _CreateSquareButton("Huy", 250, 455, 150, 35, $BS_FLAT)
     GUICtrlSetFont(-1, 11, 400, 0, "Segoe UI")
 
     GUISetState(@SW_SHOW, $hSettings)
@@ -344,15 +344,15 @@ Func _AI_ShowBeautifySettings()
 
     ; === Preset ===
     GUICtrlCreateGroup(" Mau ", 15, 335, 390, 45)
-    Local $btnPreDoan = GUICtrlCreateButton("Do an", 30, 352, 80, 22)
-    Local $btnPreBaocao = GUICtrlCreateButton("Bao cao", 120, 352, 80, 22)
-    Local $btnPreSach = GUICtrlCreateButton("Sach", 210, 352, 80, 22)
+    Local $btnPreDoan = _CreateSquareButton("Do an", 30, 352, 80, 22, $BS_FLAT)
+    Local $btnPreBaocao = _CreateSquareButton("Bao cao", 120, 352, 80, 22, $BS_FLAT)
+    Local $btnPreSach = _CreateSquareButton("Sach", 210, 352, 80, 22, $BS_FLAT)
     GUICtrlCreateGroup("", -99, -99, 1, 1)
 
     ; === Buttons ===
-    Local $btnSave = GUICtrlCreateButton("Luu", 60, 395, 130, 35)
+    Local $btnSave = _CreateSquareButton("Luu", 60, 395, 130, 35, $BS_FLAT)
     GUICtrlSetFont(-1, 11, 700, 0, "Segoe UI")
-    Local $btnCancel = GUICtrlCreateButton("Huy", 230, 395, 130, 35)
+    Local $btnCancel = _CreateSquareButton("Huy", 230, 395, 130, 35, $BS_FLAT)
 
     GUISetState(@SW_SHOW, $hDlg)
 
@@ -448,10 +448,8 @@ Func _AI_GetRange()
     Local $bAll = (GUICtrlRead($g_chkAIScopeAll) = $GUI_CHECKED)
 
     If $bSelection Then
-        Local $oSel = $g_oWord.Selection
-        If IsObj($oSel) And $oSel.Type <> 1 Then ; Khong phai insertion point
-            Return $oSel.Range
-        EndIf
+        Local $oSelectionRange = _Dom_GetSelectionRange()
+        If IsObj($oSelectionRange) Then Return $oSelectionRange
     EndIf
 
     If $bAll Then
@@ -459,16 +457,22 @@ Func _AI_GetRange()
     EndIf
 
     ; Mac dinh: thu selection, neu khong co thi lay Content
-    Local $oSel2 = $g_oWord.Selection
-    If IsObj($oSel2) And $oSel2.Type <> 1 Then
-        Return $oSel2.Range
-    EndIf
-    Return $g_oDoc.Content
+    Return _Dom_GetScopeRange("")
 EndFunc
 
 Func _AI_ExecuteReplaceAll($oFind)
     If Not IsObj($oFind) Then Return False
-    Return $oFind.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
+    If $g_bDomDryRun Then
+        _Process_AddSkipped()
+        Return False
+    EndIf
+    Local $vResult = $oFind.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
+    If @error Then
+        _Process_AddError()
+        Return False
+    EndIf
+    If $vResult Then _Process_AddChanged()
+    Return $vResult
 EndFunc
 
 Func _AI_ReplaceSmartQuotesInFind($oFind)
@@ -584,8 +588,18 @@ Func _AI_ConvertHeadings()
         Local $sClean = _AI_CleanMarkdownHeadingText($sRawText)
         If $sClean = "" Then ContinueLoop
 
+        Local $iParaStart = $oPara.Range.Start
         $oPara.Range.Text = $sClean & @CR
-        $oPara.Style = "Heading " & $iLevel
+        Local $oHeadingPara = $g_oDoc.Range($iParaStart, $iParaStart + StringLen($sClean)).Paragraphs.Item(1)
+        If IsObj($oHeadingPara) Then
+            Local $oHeadingStyle = $g_oDoc.Styles.Item("Heading " & $iLevel)
+            If IsObj($oHeadingStyle) Then
+                $oHeadingPara.Range.Style = $oHeadingStyle
+            Else
+                $oHeadingPara.Range.Style = "Heading " & $iLevel
+            EndIf
+            $oHeadingPara.OutlineLevel = $iLevel
+        EndIf
         $iCount += 1
     Next
 
@@ -989,16 +1003,22 @@ Func _AI_ConvertTables()
     Local $oRange = _AI_GetRange()
     If Not IsObj($oRange) Then Return
 
+    Local $aBatch = _Perf_BeginWordBatch("AI Markdown Tables")
     Local $oParas = $oRange.Paragraphs
-    Local $aParas[1][3]
+    Local $iParaCapacity = 128
+    Local $aParas[$iParaCapacity][3]
     Local $iParaCount = 0
     Local $iTablesConverted = 0
 
-    For $i = 1 To $oParas.Count
+    Local $iTotalParas = _Perf_CollectionCount($oParas)
+    For $i = 1 To $iTotalParas
         Local $oPara = $oParas.Item($i)
         If Not IsObj($oPara) Then ContinueLoop
         $iParaCount += 1
-        ReDim $aParas[$iParaCount + 1][3]
+        If $iParaCount >= $iParaCapacity Then
+            $iParaCapacity += 128
+            ReDim $aParas[$iParaCapacity][3]
+        EndIf
         $aParas[$iParaCount][0] = $oPara.Range.Start
         $aParas[$iParaCount][1] = $oPara.Range.End
         $aParas[$iParaCount][2] = StringStripWS($oPara.Range.Text, 3)
@@ -1020,23 +1040,54 @@ Func _AI_ConvertTables()
                 EndIf
             WEnd
 
-            Local $aTableRows[1] = [0]
-            For $r = $iBlockStart To $iBlockEnd
-                Local $sRow = $aParas[$r][2]
-                If _AI_IsMarkdownTableSeparator($sRow) Then ContinueLoop
-                $aTableRows[0] += 1
-                ReDim $aTableRows[$aTableRows[0] + 1]
-                $aTableRows[$aTableRows[0]] = $sRow
-            Next
+            Local $iBlocksCapacity = 16
+            Local $aBlocks[$iBlocksCapacity][2]
+            Local $iBlockCount = 0
+            Local $j = $iBlockStart
+            While $j <= $iBlockEnd - 1
+                If _AI_IsMarkdownTableLine($aParas[$j][2]) And _AI_IsMarkdownTableSeparator($aParas[$j + 1][2]) Then
+                    Local $iSubStart = $j
+                    Local $iSubEnd = $j + 1
+                    Local $k = $j + 2
+                    While $k <= $iBlockEnd
+                        If $k < $iBlockEnd And _AI_IsMarkdownTableLine($aParas[$k][2]) And _AI_IsMarkdownTableSeparator($aParas[$k + 1][2]) Then ExitLoop
+                        If _AI_IsMarkdownTableLine($aParas[$k][2]) Then $iSubEnd = $k
+                        $k += 1
+                    WEnd
+                    $iBlockCount += 1
+                    If $iBlockCount >= $iBlocksCapacity Then
+                        $iBlocksCapacity += 16
+                        ReDim $aBlocks[$iBlocksCapacity][2]
+                    EndIf
+                    $aBlocks[$iBlockCount][0] = $iSubStart
+                    $aBlocks[$iBlockCount][1] = $iSubEnd
+                    $j = $iSubEnd + 1
+                Else
+                    $j += 1
+                EndIf
+            WEnd
 
-            If $aTableRows[0] >= 2 Then
-                Local $iInsertStart = $aParas[$iBlockStart][0]
-                Local $iDeleteEnd = $aParas[$iBlockEnd][1]
-                Local $oDeleteRange = $g_oDoc.Range($iInsertStart, $iDeleteEnd)
-                If IsObj($oDeleteRange) Then $oDeleteRange.Delete()
-                _AI_CreateWordTableAtPosition($aTableRows, $iInsertStart)
-                $iTablesConverted += 1
-            EndIf
+            For $b = $iBlockCount To 1 Step -1
+                Local $iRowsCapacity = 16
+                Local $aTableRows[$iRowsCapacity]
+                $aTableRows[0] = 0
+                For $r = $aBlocks[$b][0] To $aBlocks[$b][1]
+                    Local $sRow = $aParas[$r][2]
+                    If _AI_IsMarkdownTableSeparator($sRow) Then ContinueLoop
+                    $aTableRows[0] += 1
+                    _Perf_NormalizeArrayCapacity($aTableRows, $iRowsCapacity, $aTableRows[0] + 1, 16)
+                    $aTableRows[$aTableRows[0]] = $sRow
+                Next
+
+                If $aTableRows[0] >= 2 Then
+                    Local $iInsertStart = $aParas[$aBlocks[$b][0]][0]
+                    Local $iDeleteEnd = $aParas[$aBlocks[$b][1]][1]
+                    Local $oDeleteRange = $g_oDoc.Range($iInsertStart, $iDeleteEnd)
+                    If IsObj($oDeleteRange) Then $oDeleteRange.Delete()
+                    _AI_CreateWordTableAtPosition($aTableRows, $iInsertStart)
+                    $iTablesConverted += 1
+                EndIf
+            Next
 
             $i = $iBlockStart - 1
             ContinueLoop
@@ -1044,6 +1095,7 @@ Func _AI_ConvertTables()
         $i -= 1
     WEnd
 
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da chuyen " & $iTablesConverted & " tables!")
     If $iTablesConverted = 0 Then
         MsgBox($MB_ICONINFORMATION, "Thong bao", "Khong tim thay Markdown table (| col | col |)")
@@ -1347,13 +1399,16 @@ Func _AI_FixExtraSpaces()
         ; Bo qua list items (da co indent rieng)
         If $oPara.Range.ListFormat.ListType <> 0 Then ContinueLoop
         Local $sText = $oPara.Range.Text
+        If $oPara.OutlineLevel >= 1 And $oPara.OutlineLevel <= 9 Then ContinueLoop
         Local $sClean = StringStripWS($sText, 3) ; Strip leading AND trailing
         ; Giu lai paragraph mark
         If StringRight($sText, 1) = Chr(13) And StringRight($sClean, 1) <> Chr(13) Then
             $sClean = $sClean & Chr(13)
         EndIf
         If $sText <> $sClean And StringLen(StringReplace($sClean, Chr(13), "")) > 0 Then
+            Local $vStyle = $oPara.Range.Style
             $oPara.Range.Text = $sClean
+            If IsObj($vStyle) Then $oPara.Range.Style = $vStyle
         EndIf
     Next
 
@@ -1700,13 +1755,19 @@ Func _AI_ConvertLaTeX()
             $oPara.Range.Text = $sClean & @CR
             Local $oBlockRange = $g_oDoc.Range($iParaStart, $iParaStart + StringLen($sClean))
             If IsObj($oBlockRange) Then
-                $oBlockRange.Font.Name = "Cambria Math"
+                $oBlockRange.Font.Name = $AI_MATH_FONT_NAME
+                If $AI_MATH_FONT_SIZE > 0 Then $oBlockRange.Font.Size = $AI_MATH_FONT_SIZE
                 $oBlockRange.Font.Italic = True
             EndIf
 
             Local $oBlockPara = 0
             If $i <= $g_oDoc.Paragraphs.Count Then $oBlockPara = $g_oDoc.Paragraphs.Item($i)
-            If IsObj($oBlockPara) Then $oBlockPara.Format.Alignment = $WD_ALIGN_CENTER
+            If IsObj($oBlockPara) Then
+                $oBlockPara.Range.Font.Name = $AI_MATH_FONT_NAME
+                If $AI_MATH_FONT_SIZE > 0 Then $oBlockPara.Range.Font.Size = $AI_MATH_FONT_SIZE
+                $oBlockPara.Range.Font.Italic = True
+                $oBlockPara.Format.Alignment = $WD_ALIGN_CENTER
+            EndIf
             $iCount += 1
         ; Tim $ inline math $
         ElseIf StringRegExp($sText, "\$[^\$]+\$") Then
@@ -1726,7 +1787,8 @@ Func _AI_ConvertLaTeX()
 
                 Local $oMathRange = $g_oDoc.Range($iWordOpen + 1, $iWordClose)
                 If IsObj($oMathRange) Then
-                    $oMathRange.Font.Name = "Cambria Math"
+                    $oMathRange.Font.Name = $AI_MATH_FONT_NAME
+                    If $AI_MATH_FONT_SIZE > 0 Then $oMathRange.Font.Size = $AI_MATH_FONT_SIZE
                     $oMathRange.Font.Italic = True
                 EndIf
 
@@ -2018,7 +2080,7 @@ Func _AI_PreviewChanges()
     Local $aC = StringRegExp($sWholeText, "```", 3)
     If Not @error Then $iCode = UBound($aC)
     Local $iLinks = 0
-    Local $aL = StringRegExp($sWholeText, "!?\\[[^\\]]+\\]\\([^\\)]+\\)", 3)
+    Local $aL = StringRegExp($sWholeText, "!?\[[^\]]+\]\([^\)]+\)", 3)
     If Not @error Then $iLinks = UBound($aL)
     Local $iBullets = 0
     Local $aBullet = StringRegExp($sWholeText, "(?m)^\s*([\-\\*\\+]|[" & ChrW(8226) & ChrW(9702) & ChrW(9642) & ChrW(9656) & ChrW(9679) & "])\s+.+$", 3)

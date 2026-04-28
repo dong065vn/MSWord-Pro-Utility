@@ -7,13 +7,16 @@
 ; Auto Detect Heading
 Func _AutoDetectHeading()
     If Not _CheckConnection() Then Return
-    _UpdateProgress("Dang tu dong gan Heading...")
+    Local $aBatch = _Perf_BeginWordBatch("Auto Detect Heading")
     
     Local $iH1 = 0, $iH2 = 0, $iH3 = 0
     Local $oParas = $g_oDoc.Paragraphs
     
-    For $i = 1 To $oParas.Count
+    Local $iParaCount = _Perf_CollectionCount($oParas)
+    _Process_Start("Auto Detect Heading", $iParaCount, "toan bo tai lieu")
+    For $i = 1 To $iParaCount
         Local $oPara = $oParas.Item($i)
+        If Not IsObj($oPara) Then ContinueLoop
         Local $oRange = $oPara.Range
         Local $sText = StringStripWS($oRange.Text, 3)
         
@@ -31,6 +34,7 @@ Func _AutoDetectHeading()
         If $bBold = True And $fSize >= 14 Then
             $oRange.Style = "Heading 1"
             $iH1 += 1
+            _Process_AddChanged()
             ContinueLoop
         EndIf
         
@@ -38,6 +42,7 @@ Func _AutoDetectHeading()
         If $bBold = True And $fSize >= 13 Then
             $oRange.Style = "Heading 2"
             $iH2 += 1
+            _Process_AddChanged()
             ContinueLoop
         EndIf
         
@@ -45,10 +50,14 @@ Func _AutoDetectHeading()
         If $bBold = True And $bItalic = True Then
             $oRange.Style = "Heading 3"
             $iH3 += 1
+            _Process_AddChanged()
         EndIf
+        
+        If _Perf_ShouldRenderStep($i, $iParaCount, 50) Then _Process_Step("Dang quet doan van", $i, $iH1 + $iH2 + $iH3, $g_iProcessSkipped, $g_iProcessErrors)
     Next
     
-    _UpdateProgress("Da gan: H1=" & $iH1 & ", H2=" & $iH2 & ", H3=" & $iH3)
+    _Perf_EndWordBatch($aBatch)
+    _Process_Done("Da gan: H1=" & $iH1 & ", H2=" & $iH2 & ", H3=" & $iH3)
     MsgBox($MB_ICONINFORMATION, "Ket qua", _
         "Da tu dong gan Heading:" & @CRLF & _
         "Heading 1: " & $iH1 & @CRLF & _
@@ -61,11 +70,13 @@ Func _ResetAllHeadings()
     If Not _CheckConnection() Then Return
     If MsgBox($MB_YESNO, "Xac nhan", "Reset tat ca Heading ve Normal?") <> $IDYES Then Return
     
-    _UpdateProgress("Dang reset Headings...")
+    Local $aBatch = _Perf_BeginWordBatch("Reset Headings")
     Local $oParas = $g_oDoc.Paragraphs
     Local $iReset = 0
     
-    For $i = 1 To $oParas.Count
+    Local $iParaCount = _Perf_CollectionCount($oParas)
+    _Process_Start("Reset Headings", $iParaCount, "toan bo tai lieu")
+    For $i = 1 To $iParaCount
         Local $oPara = $oParas.Item($i)
         If Not IsObj($oPara) Then ContinueLoop
         
@@ -76,10 +87,13 @@ Func _ResetAllHeadings()
         If StringInStr($sStyle, "Heading") Or StringInStr($sStyle, "Tieu de") Then
             $oPara.Style = "Normal"
             $iReset += 1
+            _Process_AddChanged()
         EndIf
+        If _Perf_ShouldRenderStep($i, $iParaCount, 50) Then _Process_Step("Dang reset Headings", $i, $iReset, $g_iProcessSkipped, $g_iProcessErrors)
     Next
     
-    _UpdateProgress("Da reset " & $iReset & " Heading!")
+    _Perf_EndWordBatch($aBatch)
+    _Process_Done("Da reset " & $iReset & " Heading")
 EndFunc
 
 ; Heading to TOC
@@ -95,7 +109,8 @@ Func _ListAllHeadings()
     Local $oParas = $g_oDoc.Paragraphs
     Local $iCount = 0
     
-    For $i = 1 To $oParas.Count
+    Local $iParaCount = _Perf_CollectionCount($oParas)
+    For $i = 1 To $iParaCount
         Local $oPara = $oParas.Item($i)
         If Not IsObj($oPara) Then ContinueLoop
         
@@ -125,7 +140,9 @@ EndFunc
 Func _RemoveAllFormatting()
     If Not _CheckConnection() Then Return
     If MsgBox($MB_YESNO, "Xac nhan", "Xoa tat ca dinh dang?") <> $IDYES Then Return
+    Local $aBatch = _Perf_BeginWordBatch("Xoa dinh dang")
     $g_oDoc.Content.ClearFormatting()
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da xoa tat ca dinh dang!")
 EndFunc
 
@@ -161,23 +178,26 @@ EndFunc
 ; Remove All Hyperlinks
 Func _RemoveAllHyperlinks()
     If Not _CheckConnection() Then Return
+    Local $aBatch = _Perf_BeginWordBatch("Xoa hyperlinks")
     Local $oLinks = $g_oDoc.Hyperlinks
-    Local $n = $oLinks.Count
-    While $oLinks.Count > 0
-        $oLinks.Item(1).Delete()
-    WEnd
+    Local $n = _Perf_CollectionCount($oLinks)
+    For $i = $n To 1 Step -1
+        $oLinks.Item($i).Delete()
+    Next
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da xoa " & $n & " hyperlinks!")
 EndFunc
-
 
 ; Remove All Comments
 Func _RemoveAllComments()
     If Not _CheckConnection() Then Return
+    Local $aBatch = _Perf_BeginWordBatch("Xoa comments")
     Local $oComments = $g_oDoc.Comments
-    Local $n = $oComments.Count
-    While $oComments.Count > 0
-        $oComments.Item(1).Delete()
-    WEnd
+    Local $n = _Perf_CollectionCount($oComments)
+    For $i = $n To 1 Step -1
+        $oComments.Item($i).Delete()
+    Next
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da xoa " & $n & " comments!")
 EndFunc
 
@@ -200,10 +220,11 @@ Func _ConvertNumberingToText()
         "3. Xoa dinh dang list (thut le, numbering)" & @CRLF & @CRLF & _
         "LUU Y: Nen Backup truoc!") <> $IDYES Then Return
 
+    Local $aBatch = _Perf_BeginWordBatch("Convert Numbering")
     _UpdateProgress("Dang chuyen Numbering thanh text...")
 
     ; Buoc 1: Dem so luong lists ban dau
-    Local $iTotal = $g_oDoc.Lists.Count
+    Local $iTotal = _Perf_CollectionCount($g_oDoc.Lists)
     If $iTotal = 0 Then
         MsgBox($MB_ICONINFORMATION, "Thong bao", "Khong tim thay Numbering/Bullet nao!")
         _UpdateProgress("")
@@ -245,6 +266,7 @@ Func _ConvertNumberingToText()
     If $iFailed > 0 Then $sMsg &= "Loi: " & $iFailed & @CRLF
 
     _LogPreview($sMsg)
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da chuyen " & $iConverted & "/" & $iTotal & " lists!")
     MsgBox($MB_ICONINFORMATION, "Hoan tat", $sMsg)
 EndFunc
@@ -335,10 +357,12 @@ Func _ScanThesisHeadingParagraphs()
     Local $oParas = $g_oDoc.Paragraphs
     If Not IsObj($oParas) Then Return SetError(1, 0, 0)
 
-    Local $aFound[1][4]
+    Local $iCapacity = 64
+    Local $aFound[$iCapacity][4]
     Local $iFound = 0
 
-    For $i = 1 To $oParas.Count
+    Local $iParaCount = _Perf_CollectionCount($oParas)
+    For $i = 1 To $iParaCount
         Local $oPara = $oParas.Item($i)
         If Not IsObj($oPara) Then ContinueLoop
 
@@ -351,13 +375,17 @@ Func _ScanThesisHeadingParagraphs()
         If $iLevel = 0 Then ContinueLoop
 
         $iFound += 1
-        ReDim $aFound[$iFound + 1][4]
+        If $iFound + 1 >= $iCapacity Then
+            $iCapacity = $iCapacity * 2
+            ReDim $aFound[$iCapacity][4]
+        EndIf
         $aFound[$iFound][0] = $iLevel
         $aFound[$iFound][1] = $i
         $aFound[$iFound][2] = $sText
         $aFound[$iFound][3] = ""
     Next
 
+    ReDim $aFound[$iFound + 1][4]
     Return $aFound
 EndFunc
 
@@ -555,14 +583,14 @@ Func _ShowThesisHeadingStyleDialog(ByRef $aMatches, ByRef $aCounts)
     GUICtrlCreateLabel("Nguon style:", 30, 48, 90, 20)
     Local $cboStyleSource = GUICtrlCreateCombo("", 120, 43, 360, 24, $CBS_DROPDOWNLIST)
     GUICtrlSetData($cboStyleSource, $sDocList, "Chinh van ban dang sua")
-    Local $btnRefreshSource = GUICtrlCreateButton("Lam moi", 490, 42, 80, 26)
+    Local $btnRefreshSource = _CreateSquareButton("Lam moi", 490, 42, 80, 26, $BS_FLAT)
     Local $lblSourceHint = GUICtrlCreateLabel("Mac dinh lay style tu chinh file dang sua. Co the doi sang file nguon dang mo.", 30, 73, 620, 18)
     GUICtrlSetColor($lblSourceHint, 0x555555)
 
     GUICtrlCreateLabel("Loc style:", 30, 98, 90, 20)
     Local $inpStyleFilter = GUICtrlCreateInput("", 120, 94, 250, 24)
-    Local $btnApplyFilter = GUICtrlCreateButton("Loc", 380, 93, 55, 26)
-    Local $btnClearFilter = GUICtrlCreateButton("Bo loc", 442, 93, 70, 26)
+    Local $btnApplyFilter = _CreateSquareButton("Loc", 380, 93, 55, 26, $BS_FLAT)
+    Local $btnClearFilter = _CreateSquareButton("Bo loc", 442, 93, 70, 26, $BS_FLAT)
     Local $lblFilterHint = GUICtrlCreateLabel("Uu tien style custom len dau. Co the go 0LV, BANG, NOIDUNG... de loc nhanh.", 30, 123, 640, 18)
     GUICtrlSetColor($lblFilterHint, 0x555555)
 
@@ -589,9 +617,8 @@ Func _ShowThesisHeadingStyleDialog(ByRef $aMatches, ByRef $aCounts)
     Next
     GUICtrlCreateEdit($sPreview, 20, 335, 675, 105, BitOR($ES_READONLY, $WS_VSCROLL))
 
-    Local $btnApply = GUICtrlCreateButton("Ap dung hang loat", 405, 455, 140, 34, $BS_DEFPUSHBUTTON)
-    GUICtrlSetBkColor($btnApply, 0x27AE60)
-    Local $btnCancel = GUICtrlCreateButton("Dong", 555, 455, 140, 34)
+    Local $btnApply = _CreateSquareButton("Ap dung hang loat", 405, 455, 140, 34, BitOR($BS_FLAT, $BS_DEFPUSHBUTTON), 0x27AE60)
+    Local $btnCancel = _CreateSquareButton("Dong", 555, 455, 140, 34, $BS_FLAT)
 
     GUISetState(@SW_SHOW, $hPopup)
 
@@ -683,14 +710,16 @@ Func _RefreshThesisStyleCombos($cboL1, $cboL2, $cboL3, $cboL4, $sStyles, $sFilte
 EndFunc
 
 Func _ApplyDetectedThesisHeadingStyles(ByRef $aMatches, ByRef $aStyleMap)
-    _UpdateProgress("Dang ap dung style cho de muc do an...")
+    Local $aBatch = _Perf_BeginWordBatch("Apply Thesis Heading Styles")
+    Local $iMatchCount = UBound($aMatches) - 1
+    _Process_Start("Apply Heading Styles", $iMatchCount, $iMatchCount & " de muc")
 
     Local $oParas = $g_oDoc.Paragraphs
     Local $iApplied = 0
     Local $iFailed = 0
     Local $iNormalized = 0
 
-    For $i = 1 To UBound($aMatches) - 1
+    For $i = 1 To $iMatchCount
         Local $iLevel = $aMatches[$i][0]
         Local $iParaIndex = $aMatches[$i][1]
         If $iLevel < 1 Or $iLevel > 4 Then ContinueLoop
@@ -698,6 +727,7 @@ Func _ApplyDetectedThesisHeadingStyles(ByRef $aMatches, ByRef $aStyleMap)
         Local $oPara = $oParas.Item($iParaIndex)
         If Not IsObj($oPara) Then
             $iFailed += 1
+            _Process_AddError()
             ContinueLoop
         EndIf
 
@@ -706,12 +736,16 @@ Func _ApplyDetectedThesisHeadingStyles(ByRef $aMatches, ByRef $aStyleMap)
         $oPara.Range.Style = $aStyleMap[$iLevel]
         If @error Then
             $iFailed += 1
+            _Process_AddError()
         Else
             $iApplied += 1
+            _Process_AddChanged()
         EndIf
+        If _Perf_ShouldRenderStep($i, $iMatchCount, 10) Then _Process_Step("Dang ap dung style", $i, $iApplied, $g_iProcessSkipped, $iFailed)
     Next
 
-    _UpdateProgress("Da ap dung style cho " & $iApplied & " de muc")
+    _Perf_EndWordBatch($aBatch)
+    _Process_Done("Da ap dung " & $iApplied & " style, chuan hoa " & $iNormalized & " de muc")
     MsgBox($MB_ICONINFORMATION, "Hoan tat", _
         "Da ap dung style cho " & $iApplied & " de muc." & @CRLF & _
         "Da chuan hoa so de muc: " & $iNormalized & @CRLF & _
@@ -822,7 +856,8 @@ Func _ExportCurrentDocumentToPath($sPath, $iFormat)
 
     $oExportDoc.SaveAs2($sPath, $iFormat)
     Local $bOk = (Not @error And FileExists($sPath))
-    $oExportDoc.Close(0)
+    _CloseWordDocumentNoSave($oExportDoc)
+    _CloseExportDocumentsByPath($sSourcePath, $sPath)
 
     If IsObj($g_oDoc) Then $g_oDoc.Activate()
 
@@ -847,6 +882,12 @@ Func _PrepareDocumentPathForExport($oDoc, ByRef $sSourcePath, ByRef $bDeleteSour
     DirCreate($sTempDir)
     $sSourcePath = $sTempDir & "\ExportSource_" & @YEAR & @MON & @MDAY & "_" & @HOUR & @MIN & @SEC & "_" & @MSEC & ".docx"
 
+    $oDoc.SaveCopyAs($sSourcePath)
+    If Not @error And FileExists($sSourcePath) Then
+        $bDeleteSource = True
+        Return True
+    EndIf
+
     Local $oTempDoc = $g_oWord.Documents.Add()
     If Not IsObj($oTempDoc) Then Return False
 
@@ -857,12 +898,54 @@ Func _PrepareDocumentPathForExport($oDoc, ByRef $sSourcePath, ByRef $bDeleteSour
     $oTempDoc.PageSetup.TopMargin = $oDoc.PageSetup.TopMargin
     $oTempDoc.PageSetup.BottomMargin = $oDoc.PageSetup.BottomMargin
     $oTempDoc.SaveAs2($sSourcePath, 16)
-    $oTempDoc.Close(0)
+    Local $bSaved = (Not @error And FileExists($sSourcePath))
+    _CloseWordDocumentNoSave($oTempDoc)
 
-    If @error Or Not FileExists($sSourcePath) Then Return False
+    If Not $bSaved Then Return False
 
     $bDeleteSource = True
     Return True
+EndFunc
+
+Func _CloseExportDocumentsByPath($sSourcePath, $sOutputPath)
+    If Not IsObj($g_oWord) Then Return
+    Local $oDocs = $g_oWord.Documents
+    If Not IsObj($oDocs) Then Return
+
+    Local $sSourceLower = StringLower($sSourcePath)
+    Local $sOutputLower = StringLower($sOutputPath)
+    For $i = $oDocs.Count To 1 Step -1
+        Local $oDoc = $oDocs.Item($i)
+        If Not IsObj($oDoc) Then ContinueLoop
+        If IsObj($g_oDoc) Then
+            Local $sOriginalName = $g_oDoc.Name
+            Local $sCandidateName = $oDoc.Name
+            If Not @error And $sOriginalName = $sCandidateName Then ContinueLoop
+        EndIf
+
+        Local $sFullName = StringLower($oDoc.FullName)
+        If @error Then ContinueLoop
+        If ($sSourceLower <> "" And $sFullName = $sSourceLower) Or ($sOutputLower <> "" And $sFullName = $sOutputLower) Then
+            _CloseWordDocumentNoSave($oDoc)
+        EndIf
+    Next
+EndFunc
+
+Func _CloseWordDocumentNoSave(ByRef $oDoc)
+    If Not IsObj($oDoc) Then Return True
+
+    For $iRetry = 1 To 5
+        $oDoc.Close(0)
+        Sleep(150 * $iRetry)
+
+        Local $sName = $oDoc.Name
+        If @error Then
+            $oDoc = 0
+            Return True
+        EndIf
+    Next
+
+    Return False
 EndFunc
 
 ; Show Print Preview
@@ -898,7 +981,7 @@ Func _ShowCompareDocumentsDialog()
     GUICtrlSetData($cboOriginal, $sDocList, "Chinh van ban dang sua")
     GUICtrlCreateLabel("Hoac file:", 510, 72, 55, 20)
     Local $inpOriginalPath = GUICtrlCreateInput("", 570, 67, 250, 24)
-    Local $btnBrowseOriginal = GUICtrlCreateButton("Chon...", 830, 66, 60, 26)
+    Local $btnBrowseOriginal = _CreateSquareButton("Chon...", 830, 66, 60, 26, $BS_FLAT)
     GUICtrlCreateGroup("", -99, -99, 1, 1)
 
     GUICtrlCreateGroup(" Ban sua ", 20, 145, 890, 95)
@@ -907,11 +990,10 @@ Func _ShowCompareDocumentsDialog()
     GUICtrlSetData($cboRevised, $sDocList, $sDefaultRevised)
     GUICtrlCreateLabel("Hoac file:", 510, 172, 55, 20)
     Local $inpRevisedPath = GUICtrlCreateInput("", 570, 167, 250, 24)
-    Local $btnBrowseRevised = GUICtrlCreateButton("Chon...", 830, 166, 60, 26)
+    Local $btnBrowseRevised = _CreateSquareButton("Chon...", 830, 166, 60, 26, $BS_FLAT)
     GUICtrlCreateGroup("", -99, -99, 1, 1)
 
-    Local $btnCompare = GUICtrlCreateButton("Tao ban so sanh", 690, 250, 200, 34, $BS_DEFPUSHBUTTON)
-    GUICtrlSetBkColor($btnCompare, 0x27AE60)
+    Local $btnCompare = _CreateSquareButton("Tao ban so sanh", 690, 250, 200, 34, BitOR($BS_FLAT, $BS_DEFPUSHBUTTON), 0x27AE60)
     Local $lblSummary = GUICtrlCreateLabel("Chua tao ban so sanh.", 20, 255, 640, 22)
     GUICtrlSetColor($lblSummary, 0x2C3E50)
 
@@ -924,12 +1006,12 @@ Func _ShowCompareDocumentsDialog()
     _GUICtrlListView_SetColumnWidth($listRevisions, 3, 120)
     _GUICtrlListView_SetColumnWidth($listRevisions, 4, 140)
 
-    Local $btnRefresh = GUICtrlCreateButton("Tai lai danh sach", 20, 535, 120, 30)
-    Local $btnGoTo = GUICtrlCreateButton("Xem thay doi", 150, 535, 120, 30)
-    Local $btnOpenCompare = GUICtrlCreateButton("Mo file so sanh", 280, 535, 120, 30)
-    Local $btnShowMarkup = GUICtrlCreateButton("Hien markup", 410, 535, 100, 30)
-    Local $btnHideMarkup = GUICtrlCreateButton("An markup", 520, 535, 100, 30)
-    Local $btnClose = GUICtrlCreateButton("Dong", 810, 535, 100, 30)
+    Local $btnRefresh = _CreateSquareButton("Tai lai danh sach", 20, 535, 120, 30, $BS_FLAT)
+    Local $btnGoTo = _CreateSquareButton("Xem thay doi", 150, 535, 120, 30, $BS_FLAT)
+    Local $btnOpenCompare = _CreateSquareButton("Mo file so sanh", 280, 535, 120, 30, $BS_FLAT)
+    Local $btnShowMarkup = _CreateSquareButton("Hien markup", 410, 535, 100, 30, $BS_FLAT)
+    Local $btnHideMarkup = _CreateSquareButton("An markup", 520, 535, 100, 30, $BS_FLAT)
+    Local $btnClose = _CreateSquareButton("Dong", 810, 535, 100, 30, $BS_FLAT)
 
     Local $idDetail = GUICtrlCreateEdit("", 20, 570, 890, 35, BitOR($ES_READONLY, $WS_VSCROLL))
 
@@ -1141,12 +1223,16 @@ Func _PopulateCompareRevisionList($listRevisions, $idDetail, $oCompareDoc, ByRef
     Local $iTotal = $oRevisions.Count
     Local $iInsert = 0, $iDelete = 0, $iReplace = 0
 
+    ReDim $aRevisionMap[$iTotal + 1]
+    $aRevisionMap[0] = 0
+    Local $iMapCount = 0
+
     For $i = 1 To $iTotal
         Local $oRevision = $oRevisions.Item($i)
         If Not IsObj($oRevision) Then ContinueLoop
 
-        ReDim $aRevisionMap[UBound($aRevisionMap) + 1]
-        $aRevisionMap[UBound($aRevisionMap) - 1] = $i
+        $iMapCount += 1
+        $aRevisionMap[$iMapCount] = $i
 
         GUICtrlCreateListViewItem($i & "|" & _GetRevisionTypeText($oRevision.Type) & "|" & _
             _GetRevisionPreviewText($oRevision) & "|" & $oRevision.Author & "|" & $oRevision.Date, $listRevisions)
@@ -1161,6 +1247,7 @@ Func _PopulateCompareRevisionList($listRevisions, $idDetail, $oCompareDoc, ByRef
         EndSwitch
     Next
 
+    ReDim $aRevisionMap[$iMapCount + 1]
     GUICtrlSetData($lblSummary, "Tong thay doi: " & $iTotal & " | Them: " & $iInsert & " | Xoa: " & $iDelete & " | Thay the: " & $iReplace)
     If $iTotal > 0 Then _UpdateCompareRevisionDetail($listRevisions, $oCompareDoc, $aRevisionMap, $idDetail)
 EndFunc
@@ -1429,6 +1516,8 @@ EndFunc
 Func _CleanDocumentCore()
     If Not _CheckConnection() Then Return False
 
+    Local $aBatch = _Perf_BeginWordBatch("Don dep file")
+
     While $g_oDoc.Comments.Count > 0
         $g_oDoc.Comments.Item(1).Delete()
     WEnd
@@ -1438,5 +1527,7 @@ Func _CleanDocumentCore()
     WEnd
 
     $g_oDoc.AcceptAllRevisions()
-    Return (Not @error)
+    Local $bOk = (Not @error)
+    _Perf_EndWordBatch($aBatch)
+    Return $bOk
 EndFunc

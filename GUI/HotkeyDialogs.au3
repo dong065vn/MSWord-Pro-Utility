@@ -19,7 +19,7 @@ Func _ShowBackupHotkeysDialog()
     If Not FileExists($sBackupDir) Then DirCreate($sBackupDir)
     
     ; Tao popup window
-    Local $hPopup = GUICreate("Sao luu & Khoi phuc Hotkeys", 500, 450, -1, -1, _
+    Local $hPopup = GUICreate("Sao luu && Khoi phuc Hotkeys", 500, 450, -1, -1, _
         BitOR($WS_POPUP, $WS_CAPTION, $WS_SYSMENU))
     GUISetBkColor(0xF5F5F5)
     
@@ -48,19 +48,16 @@ Func _ShowBackupHotkeysDialog()
     _LoadBackupList($listBackups, $sBackupDir)
     
     ; Nut chuc nang
-    Local $btnBackupNow = GUICtrlCreateButton("Sao luu ngay", 25, 295, 110, 35)
-    GUICtrlSetBkColor(-1, 0x27AE60)
+    Local $btnBackupNow = _CreateSquareButton("Sao luu ngay", 25, 295, 110, 35, $BS_FLAT, 0x27AE60)
     GUICtrlSetFont(-1, 9, 600)
     
-    Local $btnRestore = GUICtrlCreateButton("Khoi phuc", 145, 295, 100, 35)
-    GUICtrlSetBkColor(-1, 0x3498DB)
+    Local $btnRestore = _CreateSquareButton("Khoi phuc", 145, 295, 100, 35, $BS_FLAT, 0x3498DB)
     GUICtrlSetFont(-1, 9, 600)
     
-    Local $btnDelete = GUICtrlCreateButton("Xoa backup", 255, 295, 100, 35)
-    GUICtrlSetBkColor(-1, 0xE74C3C)
+    Local $btnDelete = _CreateSquareButton("Xoa backup", 255, 295, 100, 35, $BS_FLAT, 0xE74C3C)
     GUICtrlSetFont(-1, 9, 600)
     
-    Local $btnRefreshList = GUICtrlCreateButton("Lam moi", 365, 295, 100, 35)
+    Local $btnRefreshList = _CreateSquareButton("Lam moi", 365, 295, 100, 35, $BS_FLAT)
     GUICtrlSetFont(-1, 9, 600)
     
     ; Huong dan
@@ -69,7 +66,7 @@ Func _ShowBackupHotkeysDialog()
     GUICtrlCreateLabel("- Khoi phuc: Chon 1 backup trong danh sach roi nhan Khoi phuc", 25, 376, 450, 16)
     
     ; Nut dong
-    Local $btnClose = GUICtrlCreateButton("Dong", 390, 410, 95, 30)
+    Local $btnClose = _CreateSquareButton("Dong", 390, 410, 95, 30, $BS_FLAT)
     
     GUISetState(@SW_SHOW, $hPopup)
     
@@ -198,8 +195,7 @@ Func _EditHotkeyInline($hListView, $iRowIndex, ByRef $aAllStyles, $sIniFile, $hP
     Local $inputHotkey = GUICtrlCreateInput($sCurrentHotkey, 15, 70, 320, 25)
     GUICtrlSetFont(-1, 10)
     
-    Local $btnCapture = GUICtrlCreateButton("BAT PHIM", 345, 68, 90, 28)
-    GUICtrlSetBkColor(-1, 0x3498DB)
+    Local $btnCapture = _CreateSquareButton("BAT PHIM", 345, 68, 90, 28, $BS_FLAT, 0x3498DB)
     GUICtrlSetFont(-1, 9, 600)
     GUICtrlSetTip(-1, "Nhan de bat phim tat tu ban phim")
     
@@ -209,11 +205,10 @@ Func _EditHotkeyInline($hListView, $iRowIndex, ByRef $aAllStyles, $sIniFile, $hP
     GUICtrlCreateLabel("- Phai co it nhat 1 modifier: Ctrl, Alt, hoac Shift", 25, 139, 400, 16)
     GUICtrlCreateGroup("", -99, -99, 1, 1)
     
-    Local $btnOK = GUICtrlCreateButton("OK", 250, 165, 90, 28, $BS_DEFPUSHBUTTON)
-    GUICtrlSetBkColor(-1, 0x27AE60)
+    Local $btnOK = _CreateSquareButton("OK", 250, 165, 90, 28, BitOR($BS_FLAT, $BS_DEFPUSHBUTTON), 0x27AE60)
     GUICtrlSetFont(-1, 9, 600)
     
-    Local $btnCancel = GUICtrlCreateButton("Huy", 350, 165, 80, 28)
+    Local $btnCancel = _CreateSquareButton("Huy", 350, 165, 80, 28, $BS_FLAT)
     
     GUISetState(@SW_SHOW, $hInputDlg)
     
@@ -469,3 +464,4 @@ Func _ApplyHotkeysToCurrentDoc()
         MsgBox($MB_ICONWARNING, "Hoan thanh co loi", $sErrorMsg)
     EndIf
 EndFunc
+

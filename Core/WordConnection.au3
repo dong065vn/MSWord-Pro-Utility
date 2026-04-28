@@ -69,7 +69,7 @@ Func _RefreshWordDocsList()
         Return
     EndIf
 
-    Local $iCount = $oDocs.Count
+    Local $iCount = _Perf_CollectionCount($oDocs)
     ReDim $g_aWordDocs[$iCount + 1]
     $g_aWordDocs[0] = $iCount
     Local $sDocList = ""
@@ -77,8 +77,14 @@ Func _RefreshWordDocsList()
     For $i = 1 To $iCount
         Local $oDocTemp = $oDocs.Item($i)
         If IsObj($oDocTemp) Then
-            $g_aWordDocs[$i] = $oDocTemp.FullName
-            $sDocList &= ($sDocList <> "" ? "|" : "") & $i & ". " & $oDocTemp.Name
+            Local $bPrevMute = $g_bMuteComErrors
+            $g_bMuteComErrors = True
+            Local $sDocName = $oDocTemp.Name
+            If @error Then $sDocName = ""
+            $g_bMuteComErrors = $bPrevMute
+            If $sDocName = "" Then ContinueLoop
+            $g_aWordDocs[$i] = $i
+            $sDocList &= ($sDocList <> "" ? "|" : "") & $i & ". " & $sDocName
         EndIf
     Next
 

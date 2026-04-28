@@ -19,10 +19,13 @@ Func _FixSelectedText()
         Return
     EndIf
     
-    _UpdateProgress("Dang sua vung chon...")
+    Local $aBatch = _Perf_BeginWordBatch("Sua vung chon")
+    _Process_Start("Sua vung chon", 4, "vung chon")
+    _Process_Step("Doc van ban", 1)
     Local $sText = $oSel.Text
     $sText = _ApplyTextFixes($sText)
-    $oSel.Text = $sText
+    If _Dom_SetRangeText($oSel.Range, $sText) Then _Process_AddChanged()
+    _Process_Step("Ap dung text fixes", 2, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
 
     If GUICtrlRead($g_chkFixLineSpacing) = $GUI_CHECKED Then
         _FixLineSpacingRange($oSel.Range, 1.5)
@@ -30,9 +33,11 @@ Func _FixSelectedText()
     If GUICtrlRead($g_chkResetSpacing) = $GUI_CHECKED Then
         _FixLineSpacingRange($oSel.Range, 1.0)
     EndIf
+    _Process_Step("Xu ly line spacing", 3, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
 
     _LogPreview("DA SUA VUNG CHON:" & @CRLF & StringLeft($sText, 500))
-    _UpdateProgress("Hoan thanh!")
+    _Perf_EndWordBatch($aBatch)
+    _Process_Done("Da sua vung chon: changed=" & $g_iProcessChanged & ", skipped=" & $g_iProcessSkipped & ", errors=" & $g_iProcessErrors)
 EndFunc
 
 ; Sua toan bo
@@ -40,10 +45,18 @@ Func _FixAllDocument()
     If Not _CheckConnection() Then Return
     If MsgBox($MB_YESNO, "Xac nhan", "Sua toan bo? (Nen backup truoc)") <> $IDYES Then Return
     
-    _UpdateProgress("Dang sua toan bo...")
+    Local $aBatch = _Perf_BeginWordBatch("Sua toan bo")
+    _Process_Start("Sua toan bo", 5, "toan bo tai lieu")
+    _Process_Step("Chuan bi Find/Replace", 1)
     Local $oFind = $g_oDoc.Content.Find
     If IsObj($oFind) Then _ApplyFindReplaceFixes($oFind)
+    _Process_Step("Da ap dung Find/Replace", 2, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
     If GUICtrlRead($g_chkRemoveFakeNumbering) = $GUI_CHECKED Then _RemoveFakeNumberingInRange($g_oDoc.Content)
+    _Process_Step("Da xu ly numbering gia", 3, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
+    If GUICtrlRead($g_chkRemoveAIBullets) = $GUI_CHECKED Then _RemoveAIBulletsInRange($g_oDoc.Content)
+    _Process_Step("Da xu ly bullet AI", 4, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
+    If GUICtrlRead($g_chkBeautifyDoc) = $GUI_CHECKED Then _BeautifyWithFormatSettings($g_oDoc.Content)
+    _Process_Step("Da lam dep van ban", 5, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
 
     If GUICtrlRead($g_chkFixLineSpacing) = $GUI_CHECKED Then
         _FixLineSpacingRange($g_oDoc.Content, 1.5)
@@ -53,7 +66,8 @@ Func _FixAllDocument()
     EndIf
 
     _LogPreview("DA SUA TOAN BO TAI LIEU!")
-    _UpdateProgress("Hoan thanh!")
+    _Perf_EndWordBatch($aBatch)
+    _Process_Done("Da sua toan bo: changed=" & $g_iProcessChanged & ", skipped=" & $g_iProcessSkipped & ", errors=" & $g_iProcessErrors)
 EndFunc
 
 ; Quick Fix
@@ -73,6 +87,7 @@ Func _QuickFixAll()
     GUICtrlSetState($g_chkRemoveEmptyLines, $GUI_CHECKED)
     GUICtrlSetState($g_chkFixSpacingBefore, $GUI_CHECKED)
     GUICtrlSetState($g_chkRemoveFakeNumbering, $GUI_UNCHECKED)
+    GUICtrlSetState($g_chkRemoveAIBullets, $GUI_CHECKED)
 
     _FixAllDocument()
 EndFunc
@@ -116,6 +131,16 @@ Func _ApplyTextFixes($sText)
             Next
             $sText = _ArrayToString($aLines, @CRLF, 1)
         EndIf
+    EndIf
+
+    If GUICtrlRead($g_chkRemoveAIBullets) = $GUI_CHECKED Then
+        Local $sBulletChr = ChrW(8226)
+        ; Bullet at line start -> remove
+        $sText = StringRegExpReplace($sText, "(*ANYCRLF)(?m)^[\t ]*\x{2022}[\t ]*", "")
+        ; Mid-text bullet -> " - "
+        $sText = StringReplace($sText, " " & $sBulletChr & " ", " - ")
+        $sText = StringReplace($sText, $sBulletChr & " ", "- ")
+        $sText = StringReplace($sText, $sBulletChr, " - ")
     EndIf
     
     Return $sText
@@ -166,6 +191,10 @@ EndFunc
 
 Func _CollapseExtraParagraphBreaks($oRange, $bCompact = True)
     If Not IsObj($oRange) Then Return
+    If _Dom_ShouldSkipRange($oRange) Or $g_bDomDryRun Then
+        _Process_AddSkipped()
+        Return
+    EndIf
 
     Local $oFind = $oRange.Find
     If Not IsObj($oFind) Then Return
@@ -215,10 +244,16 @@ Func _RemoveFakeNumberingInRange($oRange)
     If Not IsObj($oParas) Then Return 0
 
     Local $iRemoved = 0
-    For $i = $oParas.Count To 1 Step -1
+    Local $iParaCount = _Perf_CollectionCount($oParas)
+    For $i = $iParaCount To 1 Step -1
+        _Process_Step("Kiem tra numbering gia", ($iParaCount - $i + 1), $iRemoved, $g_iProcessSkipped, $g_iProcessErrors)
         Local $oPara = $oParas.Item($i)
         If Not IsObj($oPara) Then ContinueLoop
         If $oPara.Range.ListFormat.ListType <> 0 Then ContinueLoop
+        If _Dom_ShouldSkipRange($oPara.Range) Then
+            _Process_AddSkipped()
+            ContinueLoop
+        EndIf
 
         Local $sOriginal = $oPara.Range.Text
         Local $sStripped = _StripUnnecessaryLeadingNumbering($sOriginal)
@@ -236,11 +271,157 @@ Func _RemoveFakeNumberingInRange($oRange)
             EndIf
         EndIf
 
-        $oTextRange.Text = StringRegExpReplace($sStripped, "[\r\x07]+$", "") & $sTail
-        $iRemoved += 1
+        If _Dom_SetRangeText($oTextRange, StringRegExpReplace($sStripped, "[\r\x07]+$", "") & $sTail) Then
+            $iRemoved += 1
+            _Process_AddChanged()
+        EndIf
     Next
 
     Return $iRemoved
+EndFunc
+
+; === Remove AI-generated bullet characters and list formatting ===
+Func _RemoveAIBulletsInRange($oRange)
+    If Not IsObj($oRange) Then Return 0
+
+    Local $oParas = $oRange.Paragraphs
+    If Not IsObj($oParas) Then Return 0
+
+    Local $iRemoved = 0
+    Local $iParaCount = _Perf_CollectionCount($oParas)
+
+    ; Step 1: Remove bullet list formatting from paragraphs
+    For $i = $iParaCount To 1 Step -1
+        Local $oPara = $oParas.Item($i)
+        If Not IsObj($oPara) Then ContinueLoop
+        If _Dom_ShouldSkipRange($oPara.Range) Then
+            _Process_AddSkipped()
+            ContinueLoop
+        EndIf
+
+        Local $oListFmt = $oPara.Range.ListFormat
+        If Not IsObj($oListFmt) Then ContinueLoop
+        If $oListFmt.ListType = 0 Then ContinueLoop
+
+        If _IsBulletListChar($oListFmt.ListString) Then
+            $oListFmt.RemoveNumbers()
+            If Not @error Then
+                $iRemoved += 1
+                _Process_AddChanged()
+            EndIf
+        EndIf
+        If _Perf_ShouldRenderStep($iParaCount - $i + 1, $iParaCount, 50) Then _
+            _Process_Step("Kiem tra bullet", $iParaCount - $i + 1, $iRemoved, $g_iProcessSkipped, $g_iProcessErrors)
+    Next
+
+    ; Step 2: Clean text bullet characters (ChrW(8226) = bullet)
+    Local $sBullet = ChrW(8226)
+    Local $oFind = $oRange.Find
+    If IsObj($oFind) Then
+        $oFind.ClearFormatting()
+        $oFind.Replacement.ClearFormatting()
+        ; Bullet at paragraph start -> remove
+        _DoReplace($oFind, "^p" & $sBullet & " ", "^p")
+        _DoReplace($oFind, "^p" & $sBullet, "^p")
+        ; Mid-text bullet -> " - "
+        _DoReplace($oFind, " " & $sBullet & " ", " - ")
+        _DoReplace($oFind, $sBullet & " ", "- ")
+        _DoReplace($oFind, $sBullet, " - ")
+    EndIf
+
+    Return $iRemoved
+EndFunc
+
+Func _IsBulletListChar($sChar)
+    If $sChar = "" Then Return False
+    Local $sFirst = StringLeft($sChar, 1)
+    ; Single non-alphanumeric char = bullet symbol (not numbered list like "1.", "a)")
+    If StringLen(StringStripWS($sChar, 3)) <= 1 And Not StringRegExp($sFirst, "[a-zA-Z0-9]") Then Return True
+    Return False
+EndFunc
+
+; === Lam dep van ban theo cai dat tab Format ===
+Func _BeautifyWithFormatSettings($oRange)
+    If Not IsObj($oRange) Then Return
+
+    ; Doc cai dat tu tab Format
+    Local $sFont = GUICtrlRead($g_cboFont)
+    Local $fSize = Number(GUICtrlRead($g_cboFontSize))
+    Local $fLineSpacing = Number(GUICtrlRead($g_cboLineSpacing))
+    Local $iAlignment = _GetAlignmentConst(GUICtrlRead($g_cboAlignment))
+    Local $bFirstIndent = (GUICtrlRead($g_chkAutoFirstLine) = $GUI_CHECKED)
+
+    Local $oParas = $oRange.Paragraphs
+    If Not IsObj($oParas) Then Return
+    Local $iCount = _Perf_CollectionCount($oParas)
+
+    For $i = 1 To $iCount
+        Local $oPara = $oParas.Item($i)
+        If Not IsObj($oPara) Then ContinueLoop
+        If _Dom_ShouldSkipRange($oPara.Range) Then
+            _Process_AddSkipped()
+            ContinueLoop
+        EndIf
+
+        Local $oStyle = $oPara.Style
+        If Not IsObj($oStyle) Then ContinueLoop
+        Local $sStyle = $oStyle.NameLocal
+
+        ; === Heading: font chuan, spacing rieng, khong thut ===
+        If StringInStr($sStyle, "Heading") Or StringInStr($sStyle, "Tieu de") Then
+            $oPara.Format.FirstLineIndent = 0
+            $oPara.Format.LeftIndent = 0
+            $oPara.Range.Font.Name = $sFont
+            $oPara.Range.Font.Color = 0
+
+            If StringInStr($sStyle, "1") Then
+                $oPara.Range.Font.Size = $fSize + 1
+                $oPara.Range.Font.Bold = True
+                $oPara.Format.SpaceBefore = 12
+                $oPara.Format.SpaceAfter = 6
+            ElseIf StringInStr($sStyle, "2") Then
+                $oPara.Range.Font.Size = $fSize
+                $oPara.Range.Font.Bold = True
+                $oPara.Format.SpaceBefore = 6
+                $oPara.Format.SpaceAfter = 3
+            ElseIf StringInStr($sStyle, "3") Then
+                $oPara.Range.Font.Size = $fSize
+                $oPara.Range.Font.Bold = True
+                $oPara.Range.Font.Italic = True
+                $oPara.Format.SpaceBefore = 6
+                $oPara.Format.SpaceAfter = 3
+            EndIf
+            _Process_AddChanged()
+            ContinueLoop
+        EndIf
+
+        ; === List: giu list format, chi fix font ===
+        If $oPara.Range.ListFormat.ListType <> 0 Then
+            $oPara.Format.FirstLineIndent = 0
+            $oPara.Range.Font.Name = $sFont
+            $oPara.Range.Font.Size = $fSize
+            $oPara.Range.Font.Color = 0
+            _Process_AddChanged()
+            ContinueLoop
+        EndIf
+
+        ; === Normal paragraph: ap dung day du ===
+        $oPara.Range.Font.Name = $sFont
+        $oPara.Range.Font.Size = $fSize
+        $oPara.Range.Font.Color = 0
+        $oPara.Format.Alignment = $iAlignment
+        $oPara.Format.LineSpacingRule = $WD_LINE_SPACE_MULTIPLE
+        $oPara.Format.LineSpacing = 12 * $fLineSpacing
+        $oPara.Format.SpaceBefore = 0
+        $oPara.Format.SpaceAfter = 0
+        If $bFirstIndent Then
+            $oPara.Format.FirstLineIndent = 1.27 * $CM_TO_POINTS
+        EndIf
+        _Process_AddChanged()
+
+        If _Perf_ShouldRenderStep($i, $iCount, 50) Then _
+            _Process_Step("Lam dep van ban", $i, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
+    Next
 EndFunc
 
 
@@ -282,7 +463,9 @@ Func _CleanUpDocument()
         $sScope = "VUNG CHON"
     EndIf
     
-    _UpdateProgress("Dang Clean Up " & $sScope & "...")
+    Local $aBatch = _Perf_BeginWordBatch("Clean Up")
+    _Process_Start("Clean Up", 5, $sScope)
+    _Process_Step("Dang Clean Up " & $sScope, 1)
     
     Local $sLog = "=== CLEAN UP DOCUMENT ===" & @CRLF
     $sLog &= "Pham vi: " & $sScope & @CRLF & @CRLF
@@ -294,15 +477,28 @@ Func _CleanUpDocument()
     
     ; 1.1. Dat lai dinh dang Font (ve mac dinh cua Style hien tai)
     ; Lenh nay xoa mau sac, in dam, font chu bi chinh tay...
-    $oRange.Font.Reset()
-    $sLog &= "[OK] Da Reset Font (xoa mau, in dam/nghieng tay)" & @CRLF
+    If Not _Dom_ShouldSkipRange($oRange) And Not $g_bDomDryRun Then
+        $oRange.Font.Reset()
+        $sLog &= "[OK] Da Reset Font (xoa mau, in dam/nghieng tay)" & @CRLF
+        _Process_AddChanged()
+    Else
+        $sLog &= "[SKIP] Reset Font do Safe opts" & @CRLF
+        _Process_AddSkipped()
+    EndIf
     
     _UpdateProgress("Buoc 2: Reset dinh dang Paragraph...")
     
     ; 1.2. Dat lai dinh dang Doan van (ve mac dinh cua Style hien tai)
     ; Lenh nay xoa thut dau dong thu cong, gian dong thu cong...
-    $oRange.ParagraphFormat.Reset()
-    $sLog &= "[OK] Da Reset Paragraph (xoa thut le, gian dong tay)" & @CRLF
+    If Not _Dom_ShouldSkipRange($oRange) And Not $g_bDomDryRun Then
+        $oRange.ParagraphFormat.Reset()
+        $sLog &= "[OK] Da Reset Paragraph (xoa thut le, gian dong tay)" & @CRLF
+        _Process_AddChanged()
+    Else
+        $sLog &= "[SKIP] Reset Paragraph do Safe opts" & @CRLF
+        _Process_AddSkipped()
+    EndIf
+    _Process_Step("Reset dinh dang", 2, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
     
     ; --- BUOC 2: XU LY DONG TRONG (2 ENTER VE 1) ---
     _UpdateProgress("Buoc 3: Xoa dong trong thua...")
@@ -312,6 +508,7 @@ Func _CleanUpDocument()
     $oFind.Replacement.ClearFormatting()
     
     _CollapseExtraParagraphBreaks($oRange, True)
+    _Process_Step("Xoa dong trong", 3, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
     
     $sLog &= "[OK] Da xoa dong trong thua (2+ Enter -> 1 Enter)" & @CRLF
     
@@ -323,29 +520,47 @@ Func _CleanUpDocument()
     $oFind.Replacement.ClearFormatting()
     $oFind.MatchWildcards = False
     
-    ; Xoa khoang trang dau dong
-    $oFind.Text = "^p "
-    $oFind.Replacement.Text = "^p"
-    $oFind.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
-    
-    ; Xoa khoang trang cuoi dong
-    $oFind.Text = " ^p"
-    $oFind.Replacement.Text = "^p"
-    $oFind.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
-    
-    ; Xoa nhieu khoang trang lien tiep
-    For $i = 1 To 5
-        $oFind.Text = "  "
-        $oFind.Replacement.Text = " "
+    If $g_bDomDryRun Then
+        _Process_AddSkipped()
+    Else
+        ; Xoa khoang trang dau dong
+        $oFind.Text = "^p "
+        $oFind.Replacement.Text = "^p"
         $oFind.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
-    Next
+        
+        ; Xoa khoang trang cuoi dong
+        $oFind.Text = " ^p"
+        $oFind.Replacement.Text = "^p"
+        $oFind.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
+        
+        ; Xoa nhieu khoang trang lien tiep
+        For $i = 1 To 5
+            $oFind.Text = "  "
+            $oFind.Replacement.Text = " "
+            $oFind.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
+        Next
+        _Process_AddChanged()
+    EndIf
     
     $sLog &= "[OK] Da xoa khoang trang thua" & @CRLF
+    _Process_Step("Xoa khoang trang", 4, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
 
     If GUICtrlRead($g_chkRemoveFakeNumbering) = $GUI_CHECKED Then
         _UpdateProgress("Buoc 5: Bo so dau dong thua...")
         Local $iRemoved = _RemoveFakeNumberingInRange($oRange)
         $sLog &= "[OK] Da bo so dau dong thua: " & $iRemoved & @CRLF
+    EndIf
+
+    If GUICtrlRead($g_chkRemoveAIBullets) = $GUI_CHECKED Then
+        _UpdateProgress("Buoc 6: Xoa bullet thua do AI...")
+        Local $iBulletsRemoved = _RemoveAIBulletsInRange($oRange)
+        $sLog &= "[OK] Da xoa bullet thua do AI: " & $iBulletsRemoved & @CRLF
+    EndIf
+
+    If GUICtrlRead($g_chkBeautifyDoc) = $GUI_CHECKED Then
+        _UpdateProgress("Buoc 7: Lam dep theo cai dat...")
+        _BeautifyWithFormatSettings($oRange)
+        $sLog &= "[OK] Da lam dep van ban theo cai dat Format" & @CRLF
     EndIf
     
     ; --- HOAN TAT ---
@@ -353,7 +568,8 @@ Func _CleanUpDocument()
     $sLog &= "Luu y: Style (Heading, List, Normal...) duoc giu nguyen!" & @CRLF
     
     _LogPreview($sLog)
-    _UpdateProgress("Clean Up hoan tat!")
+    _Perf_EndWordBatch($aBatch)
+    _Process_Done("Clean Up hoan tat: " & _Process_BuildSummary())
     MsgBox($MB_ICONINFORMATION, "Hoan tat", "Da Clean Up " & $sScope & " thanh cong!" & @CRLF & @CRLF & _
         "- Reset dinh dang (giu Style)" & @CRLF & _
         "- Xoa dong trong thua" & @CRLF & _
@@ -400,13 +616,11 @@ Func _CleanUpDocumentAdvanced()
     GUICtrlCreateGroup("", -99, -99, 1, 1)
     
     ; Buttons
-    Local $btnApplyAll = GUICtrlCreateButton("Ap dung TOAN BO", 15, 260, 120, 30)
-    GUICtrlSetBkColor(-1, 0x27AE60)
+    Local $btnApplyAll = _CreateSquareButton("Ap dung TOAN BO", 15, 260, 120, 30, $BS_FLAT, 0x27AE60)
     GUICtrlSetFont(-1, 9, 600)
-    Local $btnApplySel = GUICtrlCreateButton("Ap dung VUNG CHON", 145, 260, 130, 30)
-    GUICtrlSetBkColor(-1, 0x3498DB)
+    Local $btnApplySel = _CreateSquareButton("Ap dung VUNG CHON", 145, 260, 130, 30, $BS_FLAT, 0x3498DB)
     GUICtrlSetFont(-1, 9, 600)
-    Local $btnCancel = GUICtrlCreateButton("Huy", 320, 260, 65, 30)
+    Local $btnCancel = _CreateSquareButton("Huy", 320, 260, 65, 30, $BS_FLAT)
     
     GUISetState(@SW_SHOW, $hPopup)
     
@@ -453,58 +667,105 @@ Func _DoCleanUpWithOptions($bApplyAll, $bResetFont, $bResetPara, $bRemoveEmpty, 
         $sScope = "VUNG CHON"
     EndIf
     
-    _UpdateProgress("Dang Clean Up...")
+    Local $iSteps = 2 + ($bResetFont ? 1 : 0) + ($bResetPara ? 1 : 0) + ($bRemoveEmpty ? 1 : 0) + ($bRemoveSpaces ? 1 : 0)
+    Local $aBatch = _Perf_BeginWordBatch("Clean Up")
+    _Process_Start("Clean Up", $iSteps, $sScope)
+    _Process_Step("Dang Clean Up " & $sScope, 0)
     Local $sLog = "=== CLEAN UP (" & $sScope & ") ===" & @CRLF
+    Local $iStep = 0
     
     ; Reset Font
     If $bResetFont Then
-        $oRange.Font.Reset()
-        $sLog &= "[OK] Reset Font" & @CRLF
+        $iStep += 1
+        If Not _Dom_ShouldSkipRange($oRange) And Not $g_bDomDryRun Then
+            $oRange.Font.Reset()
+            $sLog &= "[OK] Reset Font" & @CRLF
+            _Process_AddChanged()
+        Else
+            $sLog &= "[SKIP] Reset Font do Safe opts" & @CRLF
+            _Process_AddSkipped()
+        EndIf
+        _Process_Step("Reset Font", $iStep, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
     EndIf
     
     ; Reset Paragraph
     If $bResetPara Then
-        $oRange.ParagraphFormat.Reset()
-        $sLog &= "[OK] Reset Paragraph" & @CRLF
+        $iStep += 1
+        If Not _Dom_ShouldSkipRange($oRange) And Not $g_bDomDryRun Then
+            $oRange.ParagraphFormat.Reset()
+            $sLog &= "[OK] Reset Paragraph" & @CRLF
+            _Process_AddChanged()
+        Else
+            $sLog &= "[SKIP] Reset Paragraph do Safe opts" & @CRLF
+            _Process_AddSkipped()
+        EndIf
+        _Process_Step("Reset Paragraph", $iStep, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
     EndIf
     
     ; Xu ly dong trong
     If $bRemoveEmpty Then
+        $iStep += 1
         _CollapseExtraParagraphBreaks($oRange, $bCompact)
         $sLog &= "[OK] Xu ly dong trong" & @CRLF
+        _Process_Step("Xu ly dong trong", $iStep, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
     EndIf
     
     ; Xoa khoang trang thua
     If $bRemoveSpaces Then
-        Local $oFind2 = $oRange.Find
-        $oFind2.ClearFormatting()
-        $oFind2.Replacement.ClearFormatting()
-        $oFind2.MatchWildcards = False
-        
-        $oFind2.Text = "^p "
-        $oFind2.Replacement.Text = "^p"
-        $oFind2.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
-        
-        $oFind2.Text = " ^p"
-        $oFind2.Replacement.Text = "^p"
-        $oFind2.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
-        
-        For $i = 1 To 5
-            $oFind2.Text = "  "
-            $oFind2.Replacement.Text = " "
+        $iStep += 1
+        If $g_bDomDryRun Then
+            $sLog &= "[SKIP] Xoa khoang trang do DryRun" & @CRLF
+            _Process_AddSkipped()
+        Else
+            Local $oFind2 = $oRange.Find
+            $oFind2.ClearFormatting()
+            $oFind2.Replacement.ClearFormatting()
+            $oFind2.MatchWildcards = False
+            
+            $oFind2.Text = "^p "
+            $oFind2.Replacement.Text = "^p"
             $oFind2.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
-        Next
-        $sLog &= "[OK] Xoa khoang trang thua" & @CRLF
+            
+            $oFind2.Text = " ^p"
+            $oFind2.Replacement.Text = "^p"
+            $oFind2.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
+            
+            For $i = 1 To 5
+                $oFind2.Text = "  "
+                $oFind2.Replacement.Text = " "
+                $oFind2.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
+            Next
+            $sLog &= "[OK] Xoa khoang trang thua" & @CRLF
+            _Process_AddChanged()
+        EndIf
+        _Process_Step("Xoa khoang trang", $iStep, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
     EndIf
 
     If GUICtrlRead($g_chkRemoveFakeNumbering) = $GUI_CHECKED Then
+        $iStep += 1
         Local $iRemoved = _RemoveFakeNumberingInRange($oRange)
         $sLog &= "[OK] Bo so dau dong thua: " & $iRemoved & @CRLF
+        _Process_Step("Bo so dau dong", $iStep, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
+    EndIf
+
+    If GUICtrlRead($g_chkRemoveAIBullets) = $GUI_CHECKED Then
+        $iStep += 1
+        Local $iBulletsRemoved = _RemoveAIBulletsInRange($oRange)
+        $sLog &= "[OK] Xoa bullet thua do AI: " & $iBulletsRemoved & @CRLF
+        _Process_Step("Xoa bullet AI", $iStep, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
+    EndIf
+
+    If GUICtrlRead($g_chkBeautifyDoc) = $GUI_CHECKED Then
+        $iStep += 1
+        _BeautifyWithFormatSettings($oRange)
+        $sLog &= "[OK] Lam dep van ban theo cai dat Format" & @CRLF
+        _Process_Step("Lam dep van ban", $iStep, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
     EndIf
     
     $sLog &= @CRLF & "=== HOAN TAT ===" & @CRLF
     _LogPreview($sLog)
-    _UpdateProgress("Clean Up hoan tat!")
+    _Perf_EndWordBatch($aBatch)
+    _Process_Done("Clean Up hoan tat: " & _Process_BuildSummary())
     MsgBox($MB_ICONINFORMATION, "Hoan tat", "Da Clean Up thanh cong!")
 EndFunc
 
@@ -528,6 +789,7 @@ Func _FixLayoutProblems()
     
     If $iChoice = $IDCANCEL Then Return
     
+    Local $aBatch = _Perf_BeginWordBatch("Fix Layout")
     _UpdateProgress("Dang Fix Layout...")
     Local $sLog = "=== FIX LAYOUT PROBLEMS ===" & @CRLF & @CRLF
     
@@ -559,25 +821,36 @@ Func _FixLayoutProblems()
         _UpdateProgress("Dang chuan hoa cac Bang (Tables)...")
         
         Local $oTables = $g_oDoc.Tables
-        Local $iCount = $oTables.Count
+        Local $iCount = _Perf_CollectionCount($oTables)
         
         If $iCount > 0 Then
             $sLog &= "Tim thay " & $iCount & " bang trong tai lieu." & @CRLF & @CRLF
+            Local $iTableFixed = 0
+            Local $iTableFailed = 0
             
             For $i = 1 To $iCount
                 Local $oTbl = $oTables.Item($i)
+                If Not IsObj($oTbl) Then
+                    $iTableFailed += 1
+                    _Process_AddError()
+                    ContinueLoop
+                EndIf
                 
-                _UpdateProgress("Dang xu ly bang " & $i & "/" & $iCount & "...")
+                If _Perf_ShouldRenderStep($i, $iCount, 10) Then _UpdateProgress("Dang xu ly bang " & $i & "/" & $iCount & "...")
                 
                 ; 2.1. Tat che do "Troi noi" (Quan trong nhat)
-                ; Chuyen Text Wrapping ve 'None' (Inline) de bang nam yen, khong de chu
                 $oTbl.Rows.WrapAroundText = False
+                If @error Then
+                    $iTableFailed += 1
+                    _Process_AddError()
+                    $sLog &= "[FAIL] Bang " & $i & ": Loi COM khi set WrapAroundText" & @CRLF
+                    ContinueLoop
+                EndIf
                 
                 ; 2.2. Can giua bang (Thuong bang nen can giua trang)
                 $oTbl.Rows.Alignment = 1 ; 0=Left, 1=Center, 2=Right
                 
                 ; 2.3. Thiet lap khoang cach an toan voi van ban
-                ; Thay vi chinh Table Properties, ta chinh Paragraph bao chua bang
                 Local $oRange = $oTbl.Range
                 $oRange.ParagraphFormat.SpaceBefore = 12 ; Cach doan tren 12pt
                 $oRange.ParagraphFormat.SpaceAfter = 12  ; Cach doan duoi 12pt
@@ -586,10 +859,14 @@ Func _FixLayoutProblems()
                 ; 2.4. AutoFit de bang khong bi tran le
                 $oTbl.AutoFitBehavior(2) ; wdAutoFitWindow (Tu co gian theo kho giay)
                 
+                $iTableFixed += 1
+                _Process_AddChanged()
                 $sLog &= "[OK] Bang " & $i & ": Wrap=None, Align=Center, Spacing=12pt" & @CRLF
             Next
             
-            $sLog &= @CRLF & "Da chuan hoa " & $iCount & " bang thanh cong!" & @CRLF
+            $sLog &= @CRLF & "Da chuan hoa " & $iTableFixed & "/" & $iCount & " bang!"
+            If $iTableFailed > 0 Then $sLog &= " (" & $iTableFailed & " loi)"
+            $sLog &= @CRLF
         Else
             $sLog &= "[INFO] Khong tim thay bang nao trong tai lieu." & @CRLF
         EndIf
@@ -600,6 +877,7 @@ Func _FixLayoutProblems()
     $sLog &= @CRLF & "=== HOAN TAT FIX LAYOUT ===" & @CRLF
     
     _LogPreview($sLog)
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Fix Layout hoan tat!")
     MsgBox($MB_ICONINFORMATION, "Hoan tat", "Da Fix Layout thanh cong!" & @CRLF & @CRLF & _
         "- Sua loi Justify bi gian chu" & @CRLF & _
@@ -614,7 +892,7 @@ Func _FixTableSpacing()
     If Not _CheckConnection() Then Return
     
     Local $oTables = $g_oDoc.Tables
-    Local $iCount = $oTables.Count
+    Local $iCount = _Perf_CollectionCount($oTables)
     
     If $iCount = 0 Then
         MsgBox($MB_ICONINFORMATION, "Thong bao", "Khong tim thay bang nao trong tai lieu!")
@@ -651,10 +929,9 @@ Func _FixTableSpacing()
     GUICtrlCreateGroup("", -99, -99, 1, 1)
     
     ; Buttons
-    Local $btnApply = GUICtrlCreateButton("Ap dung", 100, 200, 100, 35)
-    GUICtrlSetBkColor(-1, 0x27AE60)
+    Local $btnApply = _CreateSquareButton("Ap dung", 100, 200, 100, 35, $BS_FLAT, 0x27AE60)
     GUICtrlSetFont(-1, 10, 600)
-    Local $btnCancel = GUICtrlCreateButton("Huy", 210, 200, 80, 35)
+    Local $btnCancel = _CreateSquareButton("Huy", 210, 200, 80, 35, $BS_FLAT)
     
     GUISetState(@SW_SHOW, $hPopup)
     
@@ -686,15 +963,27 @@ Func _DoFixTableSpacing($bWrapNone, $bAlignCenter, $bAutoFit, $iSpacing)
     _UpdateProgress("Dang xu ly cac Bang...")
     
     Local $oTables = $g_oDoc.Tables
-    Local $iCount = $oTables.Count
+    Local $iCount = _Perf_CollectionCount($oTables)
+    Local $aBatch = _Perf_BeginWordBatch("Fix Table Spacing")
+    _Process_Start("Fix Table Spacing", $iCount, $iCount & " bang")
     Local $sLog = "=== FIX TABLE SPACING ===" & @CRLF & @CRLF
+    Local $iFixed = 0
     
     For $i = 1 To $iCount
         Local $oTbl = $oTables.Item($i)
-        _UpdateProgress("Dang xu ly bang " & $i & "/" & $iCount & "...")
+        If Not IsObj($oTbl) Then
+            _Process_AddError()
+            ContinueLoop
+        EndIf
+        If _Perf_ShouldRenderStep($i, $iCount, 10) Then _UpdateProgress("Dang xu ly bang " & $i & "/" & $iCount & "...")
         
         If $bWrapNone Then
             $oTbl.Rows.WrapAroundText = False
+            If @error Then
+                _Process_AddError()
+                $sLog &= "[FAIL] Bang " & $i & ": Loi COM" & @CRLF
+                ContinueLoop
+            EndIf
         EndIf
         
         If $bAlignCenter Then
@@ -710,15 +999,19 @@ Func _DoFixTableSpacing($bWrapNone, $bAlignCenter, $bAutoFit, $iSpacing)
         $oRange.ParagraphFormat.SpaceBefore = $iSpacing
         $oRange.ParagraphFormat.SpaceAfter = $iSpacing
         
+        $iFixed += 1
+        _Process_AddChanged()
+        _Process_Step("Xu ly bang", $i, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
         $sLog &= "[OK] Bang " & $i & @CRLF
     Next
     
-    $sLog &= @CRLF & "Da xu ly " & $iCount & " bang!" & @CRLF
+    $sLog &= @CRLF & "Da xu ly " & $iFixed & "/" & $iCount & " bang!" & @CRLF
     $sLog &= "Spacing: " & $iSpacing & "pt" & @CRLF
     
     _LogPreview($sLog)
-    _UpdateProgress("Hoan tat!")
-    MsgBox($MB_ICONINFORMATION, "Hoan tat", "Da chuan hoa " & $iCount & " bang!")
+    _Perf_EndWordBatch($aBatch)
+    _Process_Done("Fix Table Spacing: " & _Process_BuildSummary())
+    MsgBox($MB_ICONINFORMATION, "Hoan tat", "Da chuan hoa " & $iFixed & "/" & $iCount & " bang!")
 EndFunc
 
 ; ==============================================================================
@@ -728,6 +1021,8 @@ EndFunc
 Func _FixJustifyOnly()
     If Not _CheckConnection() Then Return
     
+    Local $aBatch = _Perf_BeginWordBatch("Fix Justify")
+    _Process_Start("Fix Justify", 1, "toan bo tai lieu")
     _UpdateProgress("Dang fix loi Justify...")
     
     Local $oFind = $g_oDoc.Content.Find
@@ -741,10 +1036,17 @@ Func _FixJustifyOnly()
     $oFind.MatchWildcards = False
     
     $oFind.Execute(Default, Default, Default, Default, Default, Default, Default, Default, Default, Default, 2)
+    If @error Then
+        _Process_AddError()
+    Else
+        _Process_AddChanged()
+    EndIf
+    _Process_Step("Thay the Shift+Enter", 1, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
     
-    _UpdateProgress("Hoan tat!")
     _LogPreview("Da thay the tat ca Shift+Enter (^l) bang Enter (^p)" & @CRLF & _
         "Loi gian chu khi Justify da duoc sua!")
+    _Perf_EndWordBatch($aBatch)
+    _Process_Done("Fix Justify hoan tat: " & _Process_BuildSummary())
     MsgBox($MB_ICONINFORMATION, "Hoan tat", "Da fix loi Justify (gian chu)!")
 EndFunc
 
@@ -828,7 +1130,7 @@ Func _ShowPDFFixHelp()
     GUICtrlSetBkColor(-1, 0xFFFFF0)
     
     ; Nut dong
-    Local $btnClose = GUICtrlCreateButton("Dong", 300, 540, 100, 30)
+    Local $btnClose = _CreateSquareButton("Dong", 300, 540, 100, 30, $BS_FLAT)
     GUICtrlSetFont(-1, 10, 600)
     
     GUISetState(@SW_SHOW, $hHelp)
@@ -842,3 +1144,4 @@ Func _ShowPDFFixHelp()
         EndSwitch
     WEnd
 EndFunc
+

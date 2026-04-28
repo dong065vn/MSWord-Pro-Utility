@@ -48,7 +48,7 @@ Func _CreateTabAIFormat()
     _EndGroup()
 
     ; === Group 4: Xu ly nang cao & Lam dep ===
-    _CreateGroup(" Xu ly nang cao & Lam dep ", 35, 430, 710, 130)
+    _CreateGroup(" Xu ly nang cao && Lam dep ", 35, 430, 710, 130)
     $g_btnAILaTeX = _CreateButton("LaTeX -> Equation", 50, 452, 130, 28)
     $g_btnAIRemoveEmoji = _CreateButton("Xoa Emoji", 188, 452, 90, 28)
     $g_btnAIFixEncoding = _CreateButton("Fix encoding VN", 286, 452, 120, 28)

@@ -43,6 +43,7 @@ Func _CreateTabCopyStyle()
     $g_btnApplyHotkeys = _CreateButton("Luu vao Normal.dotm", 35, 465, 140, 35, 0x27AE60, 9, 600)
     $g_btnBackupHotkeys = _CreateButton("Sao luu Hotkeys", 185, 465, 140, 35, 0x3498DB, 9, 600)
     $g_btnOpenModifyStyle = _CreateButton("Mo Modify Style", 335, 465, 140, 35, 0xF39C12, 9, 600)
+    $g_btnRefreshHotkeys = _CreateButton("Cap nhat Hotkeys", 485, 465, 130, 35)
 
     ; Huong dan su dung
     _CreateGroup(" Huong dan su dung ", 35, 510, 710, 100)

@@ -11,6 +11,7 @@ Func _CreateTOC()
     Local $iLevels = Number(GUICtrlRead($g_cboTOCLevels))
     Local $bHyperlink = (GUICtrlRead($g_chkTOCHyperlink) = $GUI_CHECKED)
     
+    Local $aBatch = _Perf_BeginWordBatch("Tao muc luc")
     _UpdateProgress("Dang tao muc luc...")
     
     ; Chen tieu de
@@ -24,6 +25,7 @@ Func _CreateTOC()
     Local $oTOCRange = $g_oDoc.Range($oRange.End, $oRange.End)
     $g_oDoc.TablesOfContents.Add($oTOCRange, True, 1, $iLevels, False, "", True, True, "", $bHyperlink, False, True)
     
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da tao muc luc!")
 EndFunc
 
@@ -34,7 +36,9 @@ Func _UpdateTOC()
         MsgBox($MB_ICONWARNING, "Thong bao", "Khong co muc luc!")
         Return
     EndIf
+    Local $aBatch = _Perf_BeginWordBatch("Cap nhat muc luc")
     $g_oDoc.TablesOfContents.Item(1).Update()
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da cap nhat muc luc!")
 EndFunc
 
@@ -45,13 +49,16 @@ Func _DeleteTOC()
         MsgBox($MB_ICONWARNING, "Thong bao", "Khong co muc luc!")
         Return
     EndIf
+    Local $aBatch = _Perf_BeginWordBatch("Xoa muc luc")
     $g_oDoc.TablesOfContents.Item(1).Delete()
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da xoa muc luc!")
 EndFunc
 
 ; Fix All TOC Styles
 Func _FixAllTOCStyles()
     If Not _CheckConnection() Then Return
+    Local $aBatch = _Perf_BeginWordBatch("Fix TOC styles")
     _UpdateProgress("Dang fix TOC styles...")
     
     For $i = 1 To 3
@@ -62,6 +69,7 @@ Func _FixAllTOCStyles()
         $g_oDoc.TablesOfContents.Item(1).Update()
     EndIf
     
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da fix TOC styles!")
 EndFunc
 
@@ -221,7 +229,6 @@ EndFunc
 Func _FormatReferences()
     If Not _CheckConnection() Then Return
     Local $sStyle = GUICtrlRead($g_cboCitationStyle)
-    _UpdateProgress("Dang dinh dang TLTK theo " & $sStyle & "...")
 
     ; Tim va dinh dang phan TLTK
     Local $oSel = $g_oWord.Selection
@@ -233,6 +240,9 @@ Func _FormatReferences()
             "3. Nhan nut 'Dinh dang TLTK'")
         Return
     EndIf
+
+    Local $aBatch = _Perf_BeginWordBatch("Dinh dang TLTK")
+    _UpdateProgress("Dang dinh dang TLTK theo " & $sStyle & "...")
 
     ; Ap dung dinh dang cho vung chon
     Local $oRange = $oSel.Range
@@ -248,6 +258,7 @@ Func _FormatReferences()
     $oRange.ParagraphFormat.FirstLineIndent = -0.5 * $CM_TO_POINTS
     $oRange.ParagraphFormat.LeftIndent = 0.5 * $CM_TO_POINTS
 
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da dinh dang TLTK theo " & $sStyle & "!")
     MsgBox($MB_ICONINFORMATION, "Dinh dang TLTK", "Da ap dung dinh dang " & $sStyle & @CRLF & @CRLF & _
         "- Font: Times New Roman 13pt" & @CRLF & _

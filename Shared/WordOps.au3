@@ -6,15 +6,33 @@
 
 ; Find & Replace helper
 Func _DoReplace($oFind, $sFind, $sReplace)
-    If Not IsObj($oFind) Then Return
+    If Not IsObj($oFind) Then Return 0
+    If $g_bDomDryRun Then
+        _Process_AddSkipped()
+        Return 0
+    EndIf
     $oFind.ClearFormatting()
     $oFind.Replacement.ClearFormatting()
-    $oFind.Execute($sFind, False, False, False, False, False, True, 1, False, $sReplace, $WD_REPLACE_ALL)
+    Local $vResult = $oFind.Execute($sFind, False, False, False, False, False, True, 1, False, $sReplace, $WD_REPLACE_ALL)
+    If @error Then
+        _Process_AddError()
+        Return 0
+    EndIf
+    If $vResult Then _Process_AddChanged()
+    Return ($vResult ? 1 : 0)
 EndFunc
 
 ; Fix line spacing cho range
 Func _FixLineSpacingRange($oRange, $fLineSpacing)
     If Not IsObj($oRange) Then Return
+    If _Dom_ShouldSkipRange($oRange) Then
+        _Process_AddSkipped()
+        Return
+    EndIf
+    If $g_bDomDryRun Then
+        _Process_AddSkipped()
+        Return
+    EndIf
     _UpdateProgress("Dang fix cach dong " & $fLineSpacing & "...")
 
     Local $oParaFormat = $oRange.ParagraphFormat

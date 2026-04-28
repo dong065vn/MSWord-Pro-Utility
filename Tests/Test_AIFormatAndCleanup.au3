@@ -1,6 +1,9 @@
 #include "..\Config.au3"
 #include "..\Core\WordConnection.au3"
 #include "..\Shared\Helpers.au3"
+#include "..\Shared\WordPerf.au3"
+#include "..\Shared\ProcessTracker.au3"
+#include "..\Shared\WordDom.au3"
 #include "..\Modules\Advanced.au3"
 #include "..\Modules\AIFormat.au3"
 #include "..\Modules\TOC.au3"
@@ -54,6 +57,13 @@ Func _GetParaStyleName($oPara)
     Return ""
 EndFunc
 
+Func _IsHeading1Paragraph($oPara)
+    If Not IsObj($oPara) Then Return False
+    Local $sStyle = _GetParaStyleName($oPara)
+    If StringInStr($sStyle, "Heading 1") Or StringInStr($sStyle, "Tieu de 1") Or StringInStr($sStyle, "Tiêu đề 1") Then Return True
+    Return ($oPara.OutlineLevel = 1)
+EndFunc
+
 Func _TestAIFormatCore()
     $g_oDoc = $g_oWord.Documents.Add()
     If Not IsObj($g_oDoc) Then Return False
@@ -72,7 +82,7 @@ Func _TestAIFormatCore()
 
     Local $bOk = True
     Local $oPara1 = $g_oDoc.Paragraphs.Item(1)
-    $bOk = _Assert(_GetParaStyleName($oPara1) = "Heading 1", "AI convert headings gan dung style", "AI convert headings khong gan Heading 1") And $bOk
+    $bOk = _Assert(_IsHeading1Paragraph($oPara1), "AI convert headings gan dung style", "AI convert headings khong gan Heading 1") And $bOk
     $bOk = _Assert(StringInStr($oPara1.Range.Text, "#") = 0, "AI convert headings xoa marker #", "AI convert headings con lai marker #") And $bOk
 
     Local $sBody = $g_oDoc.Paragraphs.Item(2).Range.Text

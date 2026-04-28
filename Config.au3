@@ -18,8 +18,8 @@
 #include <MsgBoxConstants.au3>
 
 ; === VERSION ===
-Global Const $VERSION = "8.8.68"
-Global Const $APP_VERSION = "8.8.68"
+Global Const $VERSION = "8.8.81"
+Global Const $APP_VERSION = "8.8.81"
 Global Const $APP_TITLE = "PDF to Word Fixer Pro"
 
 ; === WORD CONSTANTS ===
@@ -63,9 +63,10 @@ Global $g_lblStatus, $g_hTab, $g_editPreview, $g_lblProgress
 
 ; === Tab 1: PDF Fix ===
 Global $g_chkLineBreaks, $g_chkExtraSpaces, $g_chkHyphenation, $g_chkSpecialChars
-Global $g_chkParagraphs, $g_chkTabs, $g_chkVietnamese, $g_chkPageNumbers, $g_chkFixQuotes, $g_chkRemoveFakeNumbering
+Global $g_chkParagraphs, $g_chkTabs, $g_chkVietnamese, $g_chkPageNumbers, $g_chkFixQuotes, $g_chkRemoveFakeNumbering, $g_chkRemoveAIBullets, $g_chkBeautifyDoc
 Global $g_chkFixLineSpacing, $g_chkResetSpacing, $g_chkRemoveEmptyLines, $g_chkFixSpacingBefore
 Global $g_btnFixSelected, $g_btnFixAll, $g_btnQuickFix, $g_btnUndoFix, $g_btnCleanUp, $g_btnFixLayout, $g_btnPDFFixHelp
+Global $g_btnCleanUpAdv, $g_btnFixTableSpacing, $g_btnFixJustifyOnly
 
 ; === Tab 2: Format ===
 Global $g_cboFont, $g_cboFontSize, $g_cboLineSpacing, $g_cboAlignment
@@ -124,6 +125,7 @@ Global $g_btnProtectDoc, $g_btnDocProperties, $g_btnCleanDoc
 
 ; === Footer ===
 Global $g_btnHelp, $g_btnBackup, $g_btnSaveDoc
+Global $g_btnSafetyOptions
 
 ; === Tab 7: Quick Utils (NEW) ===
 Global $g_btnPastePlain, $g_btnPasteKeep, $g_btnPasteMerge
@@ -138,12 +140,15 @@ Global $g_btnShowDocInfo, $g_btnRemoveHighlightSel, $g_btnRemoveCommentsSel, $g_
 Global $g_btnRemoveCitationsSel, $g_btnRemoveCitationsDoc
 Global $g_btnPreviewCitations, $g_cboCitationMode
 Global $g_inputCitationFilter
-Global $g_inputHeadingPrefixFix, $g_inputHeadingSeparatorFix, $g_btnFixHeadingNumberDots
+Global $g_inputHeadingPrefixFix, $g_inputHeadingPrefixReplace, $g_inputHeadingSeparatorFix, $g_cboHeadingFixScope, $g_btnFixHeadingNumberDots
 
 ; === Tab 8: Smart Fix (NEW) ===
 Global $g_btnSmartAnalyze, $g_btnSmartFixAll
 Global $g_btnFixHyphenation, $g_btnFixNonBreaking, $g_btnFixDashes
 Global $g_btnBatchProcess, $g_btnFixThesisVN, $g_btnFixAPA
+Global $g_btnSmartAnalyzePro, $g_btnSmartPreviewPro, $g_btnSmartFixPro
+Global $g_chkProScopeSelection, $g_chkProSkipTables, $g_chkProSkipEquations
+Global $g_chkProSkipLinks, $g_chkProSkipFields, $g_chkProFixLayout, $g_chkProFakeNumbering
 
 ; === Tab 9: AI Format (NEW) ===
 Global $g_radChatGPT, $g_radGemini, $g_radClaude, $g_radCopilot, $g_radAutoDetect
@@ -160,6 +165,28 @@ Global $g_btnAINormalizeMath, $g_btnAISettings, $g_btnAICleanup, $g_btnAIBeautif
 ; === COM ERROR HANDLER ===
 Global $g_bMuteComErrors = False
 Global $g_oMyError = ObjEvent("AutoIt.Error", "_ComErrorHandler")
+
+; === PROCESS / DOM SAFETY STATE ===
+Global $g_sProcessName = ""
+Global $g_iProcessTotal = 0
+Global $g_iProcessCurrent = 0
+Global $g_iProcessChanged = 0
+Global $g_iProcessSkipped = 0
+Global $g_iProcessErrors = 0
+Global $g_sProcessScope = ""
+Global $g_sProcessLastMessage = ""
+Global $g_hProcessTimer = 0
+Global $g_iProcessLastRender = -1
+Global $g_iProcessLastRenderPct = -1
+Global $g_iProcessRenderEvery = 25
+
+Global $g_bDomDryRun = False
+Global $g_bDomPreferSelection = False
+Global $g_bDomSkipTables = False
+Global $g_bDomSkipEquations = False
+Global $g_bDomSkipLinks = False
+Global $g_bDomSkipFields = False
+Global $g_bDomShowSummary = True
 
 Func _ComErrorHandler($oError)
     If $g_bMuteComErrors Then Return SetError(1, 0, 0)
@@ -180,6 +207,18 @@ Func _ComErrorHandler($oError)
     ConsoleWrite("COM Error: " & $oError.description & " [0x" & Hex($oError.number) & "]" & @CRLF)
     Return SetError(1, 0, 0)
 EndFunc
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

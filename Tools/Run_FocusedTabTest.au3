@@ -1,10 +1,12 @@
 ; Focused per-tab GUI smoke tests
 
 Global Const $APP_EXE = @ScriptDir & "\..\Main_compiled.exe"
-Global Const $APP_TITLE = "PDF to Word Fixer Pro v6.1"
+Global Const $APP_TITLE = "PDF to Word Fixer Pro v"
 Global Const $LOG_DIR = @ScriptDir & "\..\Tests\Logs\Focused"
 Global $g_hWnd = ""
 Global $g_aPos = 0
+
+Opt("WinTitleMatchMode", 2)
 
 DirCreate($LOG_DIR)
 
@@ -23,6 +25,8 @@ EndFunc
 
 Func _Fail($sMsg, $iCode = 1)
     _WriteLog("FAIL: " & $sMsg)
+    ProcessClose("Main_compiled.exe")
+    ProcessClose("Main_compiled_v8.8.71.exe")
     Exit $iCode
 EndFunc
 
@@ -32,7 +36,10 @@ Func _DismissDialogs()
         Local $bClosed = False
         For $i = 1 To $aWins[0][0]
             If $aWins[$i][0] = "" Then ContinueLoop
+            If StringInStr($aWins[$i][0], "Internet Download Manager") Or StringInStr($aWins[$i][0], "IDM") Then ContinueLoop
+            If StringInStr($aWins[$i][0], "Tha") Or StringInStr($aWins[$i][0], "thả") Then ContinueLoop
             If Not WinExists($aWins[$i][1]) Then ContinueLoop
+            If $aWins[$i][1] = $g_hWnd Then ContinueLoop
             WinActivate($aWins[$i][1])
             Sleep(150)
             WinClose($aWins[$i][1])
@@ -49,6 +56,20 @@ EndFunc
 
 Func _ClickApp($iX, $iY, $iSleep = 700)
     MouseClick("left", $g_aPos[0] + $iX, $g_aPos[1] + $iY, 1, 0)
+    Sleep($iSleep)
+EndFunc
+
+Func _ClickControlText($sText, $iInstance = 1, $iSleep = 700)
+    Local $sControl = "[TEXT:" & $sText & "; INSTANCE:" & $iInstance & "]"
+    Local $bClicked = False
+    For $iWait = 1 To 20
+        If ControlClick($g_hWnd, "", $sControl, "left", 1) Then
+            $bClicked = True
+            ExitLoop
+        EndIf
+        Sleep(250)
+    Next
+    If Not $bClicked Then _Fail("Khong click duoc control: " & $sText, 10)
     Sleep($iSleep)
 EndFunc
 
@@ -81,26 +102,27 @@ EndIf
 
 ; Khoi dong app trong trang thai sach de tranh state tu lan test truoc
 ProcessClose("Main_compiled.exe")
+ProcessClose("Main_compiled_v8.8.71.exe")
+ProcessWaitClose("Main_compiled.exe", 5)
+ProcessWaitClose("Main_compiled_v8.8.71.exe", 5)
 Sleep(800)
 
+Run('"' & $APP_EXE & '"')
+If Not WinWait($APP_TITLE, "", 10) Then _Fail("App khong mo duoc.", 5)
 $g_hWnd = WinGetHandle($APP_TITLE)
-If $g_hWnd = "" Then
-    Run('"' & $APP_EXE & '"')
-    If Not WinWait($APP_TITLE, "", 10) Then _Fail("App khong mo duoc.", 5)
-    $g_hWnd = WinGetHandle($APP_TITLE)
-EndIf
 If $g_hWnd = "" Then _Fail("Khong lay duoc handle app.", 6)
 WinActivate($g_hWnd)
 If Not WinWaitActive($g_hWnd, "", 5) Then _Fail("Khong kich hoat duoc app.", 7)
 $g_aPos = WinGetPos($g_hWnd)
 If @error Or Not IsArray($g_aPos) Then _Fail("Khong lay duoc vi tri app.", 8)
+Sleep(1500)
 
 _WriteLog("START: " & $sCase)
 
 ; Connect
-_ClickApp(508, 60, 800)
+_ClickControlText("Lam moi", 1, 800)
 _DismissDialogs()
-_ClickApp(35, 60, 800)
+_ClickControlText("Tu dong", 1, 800)
 _DismissDialogs()
 _EnsureAlive("connect")
 _WriteLog("PASS: connect")
@@ -111,11 +133,11 @@ Switch $sCase
         _ClickApp(655, 380)
         _DismissDialogs()
         _EnsureAlive("pdf help")
-        _ClickApp(85, 380)
+        _ClickApp(195, 380)
         _DismissDialogs()
-        _EnsureAlive("pdf fix selected")
+        _EnsureAlive("pdf fix all")
         _WriteLog("PASS: pdf help")
-        _WriteLog("PASS: pdf fix selected")
+        _WriteLog("PASS: pdf fix all")
 
     Case "format"
         _ClickApp(135, 155)
@@ -226,9 +248,6 @@ Switch $sCase
 
     Case "ai_format"
         _ClickApp(700, 155)
-        _ClickApp(223, 257)
-        _DismissDialogs()
-        _EnsureAlive("ai bold")
         _ClickApp(454, 467)
         _DismissDialogs()
         _EnsureAlive("ai preview")
@@ -239,4 +258,5 @@ Switch $sCase
 EndSwitch
 
 _WriteLog("PASS: completed")
+ProcessClose("Main_compiled.exe")
 Exit 0

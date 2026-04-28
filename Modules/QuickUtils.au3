@@ -589,11 +589,13 @@ Func _RemoveCommentsSelection()
         Return
     EndIf
     
+    Local $aBatch = _Perf_BeginWordBatch("Xoa comment vung chon")
     Local $oComments = $oSel.Comments
-    Local $n = $oComments.Count
-    While $oComments.Count > 0
-        $oComments.Item(1).Delete()
-    WEnd
+    Local $n = _Perf_CollectionCount($oComments)
+    For $i = $n To 1 Step -1
+        $oComments.Item($i).Delete()
+    Next
+    _Perf_EndWordBatch($aBatch)
     
     _UpdateProgress("Da xoa " & $n & " comment trong vung chon")
 EndFunc
@@ -605,12 +607,14 @@ Func _UnlinkAllFields()
     If MsgBox($MB_YESNO, "Xac nhan", "Chuyen tat ca Field thanh text?" & @CRLF & _
         "(Khong the hoan tac)") <> $IDYES Then Return
     
+    Local $aBatch = _Perf_BeginWordBatch("Unlink fields")
     Local $oFields = $g_oDoc.Fields
-    Local $n = $oFields.Count
+    Local $n = _Perf_CollectionCount($oFields)
     
     For $i = $n To 1 Step -1
         $oFields.Item($i).Unlink()
     Next
+    _Perf_EndWordBatch($aBatch)
     
     _UpdateProgress("Da chuyen " & $n & " field thanh text")
 EndFunc
@@ -706,12 +710,15 @@ Func _RemoveBracketCitationsInRange($oRange, $sScopeLabel)
 
     Local $iMode = _GetCitationMode()
 
+    _Process_Start("Xoa citation", 3, $sScopeLabel)
+    _Process_Step("Dang quet citation", 1)
     _UpdateProgress("Dang xoa trich dan [n] trong " & $sScopeLabel & "...")
 
     Local $sText = $oRange.Text
     Local $aMatches = _CollectCitationMatches($sText, $aFilter, $iMode)
     If Not IsArray($aMatches) Or UBound($aMatches, 1) = 0 Then
         _UpdateProgress("Khong tim thay trich dan [n] trong " & $sScopeLabel)
+        _Process_Done("Khong tim thay citation")
         MsgBox($MB_ICONINFORMATION, "Thong bao", _
             "Khong tim thay trich dan phu hop trong " & $sScopeLabel & "." & @CRLF & @CRLF & _
             _BuildCitationModeHint($iMode) & @CRLF & _
@@ -719,16 +726,22 @@ Func _RemoveBracketCitationsInRange($oRange, $sScopeLabel)
         Return
     EndIf
 
+    _Process_Step("Dang xoa citation", 2)
+    Local $aBatch = _Perf_BeginWordBatch("Xoa citation")
     Local $iRemoved = _DeleteCitationMatchesInWordRange($oRange, $aMatches)
+    _Perf_EndWordBatch($aBatch)
 
     If $iRemoved = 0 Then
         _UpdateProgress("Khong xoa duoc citation trong " & $sScopeLabel)
+        _Process_Done("Khong xoa duoc citation")
         MsgBox($MB_ICONWARNING, "Thong bao", _
             "Da tim thay citation, nhung Word khong cho phep sua noi dung trong " & $sScopeLabel & ".")
         Return
     EndIf
 
+    _Process_Step("Don dep spacing", 3)
     _CleanupCitationSpacing($oRange)
+    _Process_Done("Da xoa " & $iRemoved & " citation")
     _UpdateProgress("Da xoa " & $iRemoved & " trich dan trong " & $sScopeLabel)
     MsgBox($MB_ICONINFORMATION, "Hoan tat", _
         "Da xoa " & $iRemoved & " trich dan trong " & $sScopeLabel & "." & @CRLF & @CRLF & _
@@ -744,7 +757,9 @@ Func _RemoveBracketCitationsInRange($oRange, $sScopeLabel)
 EndFunc
 
 Func _CollectCitationMatches($sText, $aFilter = 0, $iMode = 0)
-    Local $aMatches[0][3]
+    Local $iCapacity = 32
+    Local $aMatches[$iCapacity][3]
+    Local $iMatchCount = 0
     Local $iLen = StringLen($sText)
     Local $iPos = 1
 
@@ -778,16 +793,20 @@ Func _CollectCitationMatches($sText, $aFilter = 0, $iMode = 0)
                 EndIf
             EndIf
 
-            Local $iCount = UBound($aMatches, 1)
-            ReDim $aMatches[$iCount + 1][3]
-            $aMatches[$iCount][0] = $iDeleteStart
-            $aMatches[$iCount][1] = $iClose
-            $aMatches[$iCount][2] = $sOpen & $sInner & $sClose
+            If $iMatchCount >= $iCapacity Then
+                $iCapacity = $iCapacity * 2
+                ReDim $aMatches[$iCapacity][3]
+            EndIf
+            $aMatches[$iMatchCount][0] = $iDeleteStart
+            $aMatches[$iMatchCount][1] = $iClose
+            $aMatches[$iMatchCount][2] = $sOpen & $sInner & $sClose
+            $iMatchCount += 1
         EndIf
 
         $iPos = $iClose + 1
     WEnd
 
+    ReDim $aMatches[$iMatchCount][3]
     Return $aMatches
 EndFunc
 
@@ -816,10 +835,21 @@ Func _DeleteCitationMatchesInWordRange($oScopeRange, $aMatches)
     If Not IsObj($oScopeRange) Or Not IsArray($aMatches) Then Return 0
 
     Local $iRemoved = 0
-    For $i = 0 To UBound($aMatches, 1) - 1
-        If _DeleteFirstCitationTextInScope($oScopeRange, $aMatches[$i][2]) Then
+    Local $iBaseStart = $oScopeRange.Start
+    For $i = UBound($aMatches, 1) - 1 To 0 Step -1
+        Local $iStart = $iBaseStart + $aMatches[$i][0] - 1
+        Local $iEnd = $iBaseStart + $aMatches[$i][1]
+        Local $oDeleteRange = $g_oDoc.Range($iStart, $iEnd)
+        If IsObj($oDeleteRange) And _Perf_RetrySetRangeText($oDeleteRange, "") Then
             $iRemoved += 1
         EndIf
+    Next
+
+    If $iRemoved > 0 Then Return $iRemoved
+
+    ; Fallback for unusual Word ranges whose offsets do not map cleanly.
+    For $i = 0 To UBound($aMatches, 1) - 1
+        If _DeleteFirstCitationTextInScope($oScopeRange, $aMatches[$i][2]) Then $iRemoved += 1
     Next
 
     Return $iRemoved
@@ -903,7 +933,9 @@ Func _ParseCitationFilter($sFilter)
     Local $aParts = StringSplit($sNormalized, ",", 2)
     If Not IsArray($aParts) Or UBound($aParts) = 0 Then Return SetError(1, 0, 0)
 
-    Local $aFilter[0][2]
+    Local $iFilterCapacity = 16
+    Local $aFilter[$iFilterCapacity][2]
+    Local $iFilterCount = 0
     For $i = 0 To UBound($aParts) - 1
         Local $sPart = $aParts[$i]
         If $sPart = "" Then ContinueLoop
@@ -921,13 +953,17 @@ Func _ParseCitationFilter($sFilter)
             Return SetError(1, 0, 0)
         EndIf
 
-        Local $iCount = UBound($aFilter, 1)
-        ReDim $aFilter[$iCount + 1][2]
-        $aFilter[$iCount][0] = $iStart
-        $aFilter[$iCount][1] = $iEnd
+        If $iFilterCount >= $iFilterCapacity Then
+            $iFilterCapacity = $iFilterCapacity * 2
+            ReDim $aFilter[$iFilterCapacity][2]
+        EndIf
+        $aFilter[$iFilterCount][0] = $iStart
+        $aFilter[$iFilterCount][1] = $iEnd
+        $iFilterCount += 1
     Next
 
-    If UBound($aFilter, 1) = 0 Then Return SetError(1, 0, 0)
+    If $iFilterCount = 0 Then Return SetError(1, 0, 0)
+    ReDim $aFilter[$iFilterCount][2]
     Return $aFilter
 EndFunc
 
@@ -1019,6 +1055,8 @@ Func _FixHeadingNumberDots()
     If Not _CheckConnection() Then Return
 
     Local $sPrefix = StringStripWS(GUICtrlRead($g_inputHeadingPrefixFix), 3)
+    Local $sReplacementPrefix = StringStripWS(GUICtrlRead($g_inputHeadingPrefixReplace), 3)
+    Local $sScopeMode = GUICtrlRead($g_cboHeadingFixScope)
     Local $sSeparator = GUICtrlRead($g_inputHeadingSeparatorFix)
     If $sSeparator = "" Then $sSeparator = " "
 
@@ -1031,18 +1069,45 @@ Func _FixHeadingNumberDots()
             "- 1." & @CRLF & _
             "- 1.2" & @CRLF & _
             "- 1.2." & @CRLF & _
-            "- 1.2.3")
+            "- 1.2.3" & @CRLF & _
+            "- A." & @CRLF & _
+            "- A.2." & @CRLF & _
+            "- I.1")
+        Return
+    EndIf
+
+    Local $sReplacementNormalized = _NormalizeHeadingReplacementPrefix($sReplacementPrefix)
+    If $sReplacementPrefix <> "" And @error Then
+        MsgBox($MB_ICONWARNING, "Loi", _
+            "Tien to thay the khong hop le." & @CRLF & @CRLF & _
+            "Vi du hop le:" & @CRLF & _
+            "- A." & @CRLF & _
+            "- A.2." & @CRLF & _
+            "- B.2.1" & @CRLF & _
+            "- I." & @CRLF & _
+            "- 3.")
+        Return
+    EndIf
+    If $sReplacementNormalized <> "" And $sPrefixNormalized = "" Then
+        MsgBox($MB_ICONWARNING, "Loi", "Hay nhap 'Tien to' can quet truoc khi dung 'Thay thanh'.")
         Return
     EndIf
 
     $sSeparator = _ResolveHeadingSeparatorAlias($sSeparator)
-    _UpdateProgress("Dang sua de muc so...")
+    Local $oScopeRange = _ResolveHeadingFixScopeRange($sScopeMode)
+    If @error Or Not IsObj($oScopeRange) Then Return
 
-    Local $oParas = $g_oDoc.Paragraphs
+    Local $sScopeLabel = _BuildHeadingFixScopeLabel($sScopeMode)
+    _UpdateProgress("Dang sua de muc so trong " & $sScopeLabel & "...")
+
+    Local $aBatch = _Perf_BeginWordBatch("Sua de muc so")
+    Local $oParas = $oScopeRange.Paragraphs
+    Local $iParaCount = _Perf_CollectionCount($oParas)
     Local $iFixed = 0
     Local $iScanned = 0
 
-    For $i = 1 To $oParas.Count
+    _Process_Start("Sua de muc so", $iParaCount, $sScopeLabel)
+    For $i = 1 To $iParaCount
         Local $oPara = $oParas.Item($i)
         If Not IsObj($oPara) Then ContinueLoop
 
@@ -1050,17 +1115,19 @@ Func _FixHeadingNumberDots()
         If $sRawText = "" Then ContinueLoop
 
         $iScanned += 1
-        Local $sNewText = _NormalizeHeadingParagraphPrefixText($sRawText, $sPrefixNormalized, $sSeparator)
+        Local $sNewText = _NormalizeHeadingParagraphPrefixText($sRawText, $sPrefixNormalized, $sReplacementNormalized, $sSeparator)
         If @error Then ContinueLoop
         If $sNewText = $sRawText Then ContinueLoop
 
-        $oPara.Range.Text = $sNewText
-        $iFixed += 1
+        If _Perf_RetrySetRangeText($oPara.Range, $sNewText) Then $iFixed += 1
+        _Process_Step("Dang sua de muc so", $i, $iFixed, 0, $g_iProcessErrors)
     Next
 
-    _UpdateProgress("Da sua " & $iFixed & " de muc")
+    _Perf_EndWordBatch($aBatch)
+    _Process_Done("Da sua " & $iFixed & " de muc trong " & $sScopeLabel)
     MsgBox($MB_ICONINFORMATION, "Hoan tat", _
         "Da sua " & $iFixed & " de muc." & @CRLF & @CRLF & _
+        "Pham vi: " & $sScopeLabel & @CRLF & _
         "Da quet: " & $iScanned & " doan." & @CRLF & @CRLF & _
         "Ho tro cac dang:" & @CRLF & _
         "- ""2 Tieu de""" & @CRLF & _
@@ -1072,10 +1139,32 @@ Func _FixHeadingNumberDots()
         "Meo dung nhanh:" & @CRLF & _
         "- Tien to ""2"" hoac ""2."" -> chi sua chuong 2" & @CRLF & _
         "- Tien to ""2.4"" hoac ""2.4."" -> chi sua nhanh muc 2.4.x" & @CRLF & _
+        "- Tien to ""1."" + thay thanh ""A."" -> 1.2.1 thanh A.2.1" & @CRLF & _
         "- Ngat sau so = "" "" -> 2.4 Tieu de" & @CRLF & _
         "- Ngat sau so = "". "" -> 2.4. Tieu de" & @CRLF & _
         "- Ngat sau so = "" - "" -> 2.4 - Tieu de" & @CRLF & _
         "- Ngat sau so = "": "" -> 2.4: Tieu de")
+EndFunc
+
+Func _ResolveHeadingFixScopeRange($sScopeMode)
+    If $sScopeMode = "Vung chon" Then
+        If Not IsObj($g_oWord) Or Not IsObj($g_oWord.Selection) Then Return SetError(1, 0, 0)
+
+        Local $oSelRange = $g_oWord.Selection.Range
+        If Not IsObj($oSelRange) Then Return SetError(1, 0, 0)
+        If $oSelRange.Start = $oSelRange.End Then
+            MsgBox($MB_ICONWARNING, "Thong bao", "Ban dang chon pham vi 'Vung chon' nhung chua boi den noi dung.")
+            Return SetError(1, 0, 0)
+        EndIf
+        Return $oSelRange.Duplicate
+    EndIf
+
+    Return $g_oDoc.Content
+EndFunc
+
+Func _BuildHeadingFixScopeLabel($sScopeMode)
+    If $sScopeMode = "Vung chon" Then Return "vung chon"
+    Return "toan document"
 EndFunc
 
 Func _NormalizeHeadingPrefixFilter($sPrefix)
@@ -1083,7 +1172,17 @@ Func _NormalizeHeadingPrefixFilter($sPrefix)
     If $sClean = "" Then Return ""
 
     $sClean = StringRegExpReplace($sClean, "\s*\.\s*", ".")
-    If Not StringRegExp($sClean, "^\d+(?:\.\d+)*\.?$") Then Return SetError(1, 0, "")
+    If Not StringRegExp($sClean, "^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\.?$") Then Return SetError(1, 0, "")
+    If StringRight($sClean, 1) <> "." Then $sClean &= "."
+    Return $sClean
+EndFunc
+
+Func _NormalizeHeadingReplacementPrefix($sPrefix)
+    Local $sClean = StringStripWS($sPrefix, 3)
+    If $sClean = "" Then Return ""
+
+    $sClean = StringRegExpReplace($sClean, "\s*\.\s*", ".")
+    If Not StringRegExp($sClean, "^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\.?$") Then Return SetError(1, 0, "")
     If StringRight($sClean, 1) <> "." Then $sClean &= "."
     Return $sClean
 EndFunc
@@ -1101,7 +1200,7 @@ Func _ResolveHeadingSeparatorAlias($sSeparator)
     Return $sValue
 EndFunc
 
-Func _NormalizeHeadingParagraphPrefixText($sRawText, $sPrefixNormalized, $sSeparator)
+Func _NormalizeHeadingParagraphPrefixText($sRawText, $sPrefixNormalized, $sReplacementNormalized, $sSeparator)
     Local $sEol = ""
     Local $sBody = $sRawText
     If StringRight($sBody, 2) = @CRLF Then
@@ -1115,7 +1214,7 @@ Func _NormalizeHeadingParagraphPrefixText($sRawText, $sPrefixNormalized, $sSepar
         $sBody = StringTrimRight($sBody, 1)
     EndIf
 
-    Local $aMatch = StringRegExp($sBody, "^(\s*)((?:\d+\s*(?:\.\s*\d+)*))(\s*(?:\.)?)\s+(.+?)\s*$", 1)
+    Local $aMatch = StringRegExp($sBody, "^(\s*)((?:[A-Za-z0-9]+\s*(?:\.\s*[A-Za-z0-9]+)*))(\s*(?:\.)?)\s+(.+?)\s*$", 1)
     If @error Or Not IsArray($aMatch) Or UBound($aMatch) < 4 Then Return SetError(1, 0, $sRawText)
 
     Local $sLeading = $aMatch[0]
@@ -1128,12 +1227,37 @@ Func _NormalizeHeadingParagraphPrefixText($sRawText, $sPrefixNormalized, $sSepar
     If StringStripWS($sTrailingMark, 3) = "." Then $sFullPrefix &= "."
 
     If $sPrefixNormalized <> "" Then
-        Local $sPrefixNoDot = StringTrimRight($sPrefixNormalized, 1)
-        Local $bMatchPrefix = (StringLeft($sFullPrefix, StringLen($sPrefixNormalized)) = $sPrefixNormalized)
-        If Not $bMatchPrefix Then $bMatchPrefix = (StringLeft($sNormalizedNumber, StringLen($sPrefixNoDot)) = $sPrefixNoDot)
-        If Not $bMatchPrefix Then Return SetError(2, 0, $sRawText)
+        If Not _HeadingPrefixMatches($sNormalizedNumber, $sFullPrefix, $sPrefixNormalized) Then Return SetError(2, 0, $sRawText)
     EndIf
 
+    $sNormalizedNumber = _ReplaceHeadingPrefix($sNormalizedNumber, $sPrefixNormalized, $sReplacementNormalized)
     Return $sLeading & $sNormalizedNumber & $sSeparator & $sRest & $sEol
+EndFunc
+
+Func _HeadingPrefixMatches($sNormalizedNumber, $sFullPrefix, $sPrefixNormalized)
+    If $sPrefixNormalized = "" Then Return True
+
+    Local $sPrefixNoDot = StringTrimRight($sPrefixNormalized, 1)
+    If $sFullPrefix = $sPrefixNormalized Then Return True
+    If _HeadingPrefixBoundaryMatch($sNormalizedNumber, $sPrefixNoDot) Then Return True
+    Return False
+EndFunc
+
+Func _HeadingPrefixBoundaryMatch($sValue, $sPrefixNoDot)
+    If $sPrefixNoDot = "" Then Return False
+    If $sValue = $sPrefixNoDot Then Return True
+    If StringLeft($sValue, StringLen($sPrefixNoDot) + 1) = $sPrefixNoDot & "." Then Return True
+    Return False
+EndFunc
+
+Func _ReplaceHeadingPrefix($sNormalizedNumber, $sPrefixNormalized, $sReplacementNormalized)
+    If $sPrefixNormalized = "" Or $sReplacementNormalized = "" Then Return $sNormalizedNumber
+
+    Local $sPrefixNoDot = StringTrimRight($sPrefixNormalized, 1)
+    Local $sReplacementNoDot = StringTrimRight($sReplacementNormalized, 1)
+    If Not _HeadingPrefixBoundaryMatch($sNormalizedNumber, $sPrefixNoDot) Then Return $sNormalizedNumber
+
+    If $sNormalizedNumber = $sPrefixNoDot Then Return $sReplacementNoDot
+    Return $sReplacementNoDot & StringTrimLeft($sNormalizedNumber, StringLen($sPrefixNoDot))
 EndFunc
 

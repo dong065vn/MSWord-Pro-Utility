@@ -31,6 +31,59 @@ function Run-Step {
     }
 }
 
+function Assert-LogSuccess {
+    param(
+        [string]$Path,
+        [string]$RequiredLine
+    )
+    $deadline = (Get-Date).AddSeconds(45)
+    $content = @()
+    while ((Get-Date) -lt $deadline) {
+        if (Test-Path $Path) {
+            $content = Get-Content -Path $Path
+            $hasRequired = [bool]($content | Where-Object { $_ -eq $RequiredLine })
+            if ($hasRequired) {
+                $fail = $content | Where-Object { $_ -like 'FAIL:*' } | Select-Object -First 1
+                if ($fail) { throw "Log failed: $Path :: $fail" }
+                return
+            }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    if (-not (Test-Path $Path)) { throw "Missing log: $Path" }
+    $fail = $content | Where-Object { $_ -like 'FAIL:*' } | Select-Object -First 1
+    if ($fail) { throw "Log failed: $Path :: $fail" }
+    throw "Log missing required success line: $RequiredLine"
+}
+
+function Invoke-AutoItScript {
+    param(
+        [string]$ScriptPath,
+        [string[]]$Arguments = @(),
+        [string]$StdOutPath = "",
+        [string]$StdErrPath = ""
+    )
+    $startArgs = @{
+        FilePath = $autoIt3
+        ArgumentList = @($ScriptPath) + $Arguments
+        Wait = $true
+        PassThru = $true
+        WindowStyle = 'Hidden'
+    }
+    if ($StdOutPath -ne "") {
+        if (Test-Path $StdOutPath) { Remove-Item $StdOutPath -Force }
+        $startArgs.RedirectStandardOutput = $StdOutPath
+    }
+    if ($StdErrPath -ne "") {
+        if (Test-Path $StdErrPath) { Remove-Item $StdErrPath -Force }
+        $startArgs.RedirectStandardError = $StdErrPath
+    }
+    $process = Start-Process @startArgs
+    if ($process.ExitCode -ne 0) {
+        throw "AutoIt script failed with exit code $($process.ExitCode): $ScriptPath"
+    }
+}
+
 function Run-AutoItTestWithDialogClose {
     param(
         [string]$ScriptPath,
@@ -84,13 +137,13 @@ Run-Step "Au3Check Main.au3" {
 }
 
 Run-Step "Tab smoke" {
-    & $autoIt3 (Join-Path $root "Tools\Run_TabSmokeTest.au3")
-    if ($LASTEXITCODE -ne 0) { throw "Tab smoke failed with exit code $LASTEXITCODE" }
+    Invoke-AutoItScript -ScriptPath (Join-Path $root "Tools\Run_TabSmokeTest.au3")
+    Assert-LogSuccess -Path (Join-Path $logsDir "TabSmokeTest.log") -RequiredLine "PASS: Da chuyen het 9 tab ma khong thay app bi dong."
 }
 
 Run-Step "Runtime smoke" {
-    & $autoIt3 (Join-Path $root "Tools\Run_RuntimeSmokeTest.au3")
-    if ($LASTEXITCODE -ne 0) { throw "Runtime smoke failed with exit code $LASTEXITCODE" }
+    Invoke-AutoItScript -ScriptPath (Join-Path $root "Tools\Run_RuntimeSmokeTest.au3")
+    Assert-LogSuccess -Path (Join-Path $logsDir "RuntimeSmokeTest.log") -RequiredLine "PASS: Hoan tat runtime smoke test qua 9 tab."
 }
 
 $cases = @(
@@ -107,8 +160,8 @@ $cases = @(
 
 foreach ($case in $cases) {
     Run-Step "Focused $case" {
-        & $autoIt3 (Join-Path $root "Tools\Run_FocusedTabTest.au3") $case
-        if ($LASTEXITCODE -ne 0) { throw "Focused case '$case' failed with exit code $LASTEXITCODE" }
+        Invoke-AutoItScript -ScriptPath (Join-Path $root "Tools\Run_FocusedTabTest.au3") -Arguments @($case)
+        Assert-LogSuccess -Path (Join-Path $focusedDir "$case.log") -RequiredLine "PASS: completed"
     }
 }
 
@@ -129,38 +182,47 @@ Run-Step "SaveToNormalDotm" {
 }
 
 Run-Step "Advanced exports + SmartFix" {
-    & $autoIt3 (Join-Path $root "Tests\Test_AdvancedExportsAndSmartFix.au3")
-    if ($LASTEXITCODE -ne 0) { throw "Advanced exports + SmartFix failed with exit code $LASTEXITCODE" }
+    Invoke-AutoItScript -ScriptPath (Join-Path $root "Tests\Test_AdvancedExportsAndSmartFix.au3")
+}
+
+Run-Step "Process tracker + DOM helpers" {
+    Invoke-AutoItScript -ScriptPath (Join-Path $root "Tests\Test_ProcessTrackerDomHelpers.au3")
+}
+
+Run-Step "WordPerf helpers" {
+    Invoke-AutoItScript -ScriptPath (Join-Path $root "Tests\Test_WordPerfHelpers.au3") `
+        -StdOutPath (Join-Path $logsDir "Test_WordPerfHelpers.out.txt") `
+        -StdErrPath (Join-Path $logsDir "Test_WordPerfHelpers.err.txt")
+}
+
+Run-Step "Smart Fix Pro pipeline" {
+    Invoke-AutoItScript -ScriptPath (Join-Path $root "Tests\Test_SmartFixProPipeline.au3") `
+        -StdOutPath (Join-Path $logsDir "Test_SmartFixProPipeline.out.txt") `
+        -StdErrPath (Join-Path $logsDir "Test_SmartFixProPipeline.err.txt")
 }
 
 Run-Step "Advanced document ops" {
-    & $autoIt3 (Join-Path $root "Tests\Test_AdvancedDocumentOps.au3")
-    if ($LASTEXITCODE -ne 0) { throw "Advanced document ops failed with exit code $LASTEXITCODE" }
+    Invoke-AutoItScript -ScriptPath (Join-Path $root "Tests\Test_AdvancedDocumentOps.au3")
 }
 
 Run-Step "AIFormat + Cleanup" {
-    & $autoIt3 (Join-Path $root "Tests\Test_AIFormatAndCleanup.au3")
-    if ($LASTEXITCODE -ne 0) { throw "AIFormat + Cleanup failed with exit code $LASTEXITCODE" }
+    Invoke-AutoItScript -ScriptPath (Join-Path $root "Tests\Test_AIFormatAndCleanup.au3")
 }
 
 Run-Step "AIFormat markdown structures" {
-    & $autoIt3 (Join-Path $root "Tests\Test_AIFormatMarkdownStructures.au3")
-    if ($LASTEXITCODE -ne 0) { throw "AIFormat markdown structures failed with exit code $LASTEXITCODE" }
+    Invoke-AutoItScript -ScriptPath (Join-Path $root "Tests\Test_AIFormatMarkdownStructures.au3")
 }
 
 Run-Step "AIBeautify + Italic" {
-    & $autoIt3 (Join-Path $root "Tests\Test_AIBeautifyAndItalic.au3")
-    if ($LASTEXITCODE -ne 0) { throw "AIBeautify + Italic failed with exit code $LASTEXITCODE" }
+    Invoke-AutoItScript -ScriptPath (Join-Path $root "Tests\Test_AIBeautifyAndItalic.au3")
 }
 
 Run-Step "AILaTeX + Emoji" {
-    & $autoIt3 (Join-Path $root "Tests\Test_AILaTeXAndEmoji.au3")
-    if ($LASTEXITCODE -ne 0) { throw "AILaTeX + Emoji failed with exit code $LASTEXITCODE" }
+    Invoke-AutoItScript -ScriptPath (Join-Path $root "Tests\Test_AILaTeXAndEmoji.au3")
 }
 
 Run-Step "AIPreview counts" {
-    & $autoIt3 (Join-Path $root "Tests\Test_AIPreviewCounts.au3")
-    if ($LASTEXITCODE -ne 0) { throw "AIPreview counts failed with exit code $LASTEXITCODE" }
+    Invoke-AutoItScript -ScriptPath (Join-Path $root "Tests\Test_AIPreviewCounts.au3")
 }
 
 Write-Summary ""
@@ -172,6 +234,9 @@ Write-Summary "  Focused\\*.log"
 Write-Summary "  Test_HotkeyFlow.out.txt"
 Write-Summary "  Test_SaveToNormalDotm.out.txt"
 Write-Summary "  Test_AdvancedExportsAndSmartFix.out.txt"
+Write-Summary "  Test_ProcessTrackerDomHelpers.out.txt"
+Write-Summary "  Test_WordPerfHelpers.out.txt"
+Write-Summary "  Test_SmartFixProPipeline.out.txt"
 Write-Summary "  Test_AdvancedDocumentOps.out.txt"
 Write-Summary "  Test_AIFormatAndCleanup.out.txt"
 Write-Summary "  Test_AIFormatMarkdownStructures.out.txt"

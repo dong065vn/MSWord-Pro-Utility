@@ -47,8 +47,9 @@ Func _CreateMainGUI()
     $g_btnHelp = _CreateButton("Tro giup", 20, 695, 90, 35)
     $g_btnBackup = _CreateButton("Backup", 120, 695, 90, 35)
     $g_btnSaveDoc = _CreateButton("Luu file", 220, 695, 90, 35)
+    $g_btnSafetyOptions = _CreateButton("Safe opts", 320, 695, 90, 35, 0x34495E)
     
-    $g_lblProgress = GUICtrlCreateLabel("", 330, 705, 430, 20)
+    $g_lblProgress = GUICtrlCreateLabel("", 420, 705, 340, 20)
     GUICtrlSetColor($g_lblProgress, 0x27AE60)
     GUICtrlSetFont(-1, 9, 600, 0, "Segoe UI")
 

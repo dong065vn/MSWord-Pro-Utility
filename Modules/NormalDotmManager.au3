@@ -204,8 +204,8 @@ Func _ShowBackupSelector($aBackups)
         _GUICtrlListView_AddSubItem($listBackups, $i - 1, $sStyleCount, 2)
     Next
     
-    Local $btnOK = GUICtrlCreateButton("OK", 300, 350, 90, 30)
-    Local $btnCancel = GUICtrlCreateButton("Cancel", 400, 350, 90, 30)
+    Local $btnOK = _CreateSquareButton("OK", 300, 350, 90, 30, $BS_FLAT)
+    Local $btnCancel = _CreateSquareButton("Cancel", 400, 350, 90, 30, $BS_FLAT)
     
     GUISetState(@SW_SHOW)
     
@@ -248,3 +248,4 @@ Func _QuickBackupNormalDotm()
         ; Khong hien MsgBox, chi log
     EndIf
 EndFunc
+

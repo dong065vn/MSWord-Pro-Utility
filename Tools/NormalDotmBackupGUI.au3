@@ -19,6 +19,20 @@ Global $g_listBackups = 0
 Global $g_editLog = 0
 Global $g_lblStatus = 0
 
+Func _MakeButtonSquare($idButton)
+    Local $hButton = GUICtrlGetHandle($idButton)
+    If $hButton = 0 Then Return False
+    DllCall("uxtheme.dll", "long", "SetWindowTheme", "hwnd", $hButton, "wstr", "", "wstr", "")
+    Return Not @error
+EndFunc
+
+Func _CreateSquareButton($sText, $iX, $iY, $iW, $iH, $iStyle = $BS_FLAT)
+    Local $btn = GUICtrlCreateButton($sText, $iX, $iY, $iW, $iH, BitOR($iStyle, $BS_FLAT))
+    _MakeButtonSquare($btn)
+    GUICtrlSetFont($btn, 9, 400, 0, "Segoe UI")
+    Return $btn
+EndFunc
+
 ; === MAIN ===
 _Main()
 
@@ -32,15 +46,15 @@ Func _Main()
     
     ; Group: Actions
     GUICtrlCreateGroup("Actions", 10, 40, 380, 200)
-    Local $btnConnect = GUICtrlCreateButton("1. Ket noi Word", 20, 60, 150, 30)
-    Local $btnScan = GUICtrlCreateButton("2. Quick Scan", 20, 100, 150, 30)
-    Local $btnBackup = GUICtrlCreateButton("3. Full Backup", 20, 140, 150, 30)
-    Local $btnRestore = GUICtrlCreateButton("4. Restore", 20, 180, 150, 30)
+    Local $btnConnect = _CreateSquareButton("1. Ket noi Word", 20, 60, 150, 30, $BS_FLAT)
+    Local $btnScan = _CreateSquareButton("2. Quick Scan", 20, 100, 150, 30, $BS_FLAT)
+    Local $btnBackup = _CreateSquareButton("3. Full Backup", 20, 140, 150, 30, $BS_FLAT)
+    Local $btnRestore = _CreateSquareButton("4. Restore", 20, 180, 150, 30, $BS_FLAT)
     
-    Local $btnExportTxt = GUICtrlCreateButton("Export TXT", 200, 60, 150, 30)
-    Local $btnExportCSV = GUICtrlCreateButton("Export CSV", 200, 100, 150, 30)
-    Local $btnOpenFolder = GUICtrlCreateButton("Mo Backup Folder", 200, 140, 150, 30)
-    Local $btnRefresh = GUICtrlCreateButton("Refresh List", 200, 180, 150, 30)
+    Local $btnExportTxt = _CreateSquareButton("Export TXT", 200, 60, 150, 30, $BS_FLAT)
+    Local $btnExportCSV = _CreateSquareButton("Export CSV", 200, 100, 150, 30, $BS_FLAT)
+    Local $btnOpenFolder = _CreateSquareButton("Mo Backup Folder", 200, 140, 150, 30, $BS_FLAT)
+    Local $btnRefresh = _CreateSquareButton("Refresh List", 200, 180, 150, 30, $BS_FLAT)
     GUICtrlCreateGroup("", -99, -99, 1, 1)
     
     ; Group: Backups List
@@ -58,8 +72,8 @@ Func _Main()
     GUICtrlSetFont(-1, 9, 400, 0, "Consolas")
     
     ; Footer
-    Local $btnHelp = GUICtrlCreateButton("Help", 650, 575, 70, 25)
-    Local $btnExit = GUICtrlCreateButton("Exit", 725, 575, 70, 25)
+    Local $btnHelp = _CreateSquareButton("Help", 650, 575, 70, 25, $BS_FLAT)
+    Local $btnExit = _CreateSquareButton("Exit", 725, 575, 70, 25, $BS_FLAT)
     
     GUISetState(@SW_SHOW)
     
@@ -383,3 +397,4 @@ Func _Log($sMsg)
     ConsoleWrite($sMsg & @CRLF)
     GUICtrlSetData($g_editLog, $sMsg & @CRLF, 1)
 EndFunc
+

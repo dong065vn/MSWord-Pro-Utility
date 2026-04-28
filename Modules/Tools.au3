@@ -14,6 +14,7 @@ Func _DoFindReplace()
         Return
     EndIf
 
+    _Process_Start("Find Replace", 1, "toan bo tai lieu")
     Local $oFind = $g_oDoc.Content.Find
     $oFind.ClearFormatting()
     $oFind.Replacement.ClearFormatting()
@@ -21,8 +22,14 @@ Func _DoFindReplace()
     Local $bCase = (GUICtrlRead($g_chkMatchCase) = $GUI_CHECKED)
     Local $bWord = (GUICtrlRead($g_chkWholeWord) = $GUI_CHECKED)
     
-    $oFind.Execute($sFind, $bCase, $bWord, False, False, False, True, 1, False, $sReplace, $WD_REPLACE_ALL)
-    _UpdateProgress("Da thay the xong!")
+    If $g_bDomDryRun Then
+        _Process_AddSkipped()
+    Else
+        Local $vResult = $oFind.Execute($sFind, $bCase, $bWord, False, False, False, True, 1, False, $sReplace, $WD_REPLACE_ALL)
+        If $vResult Then _Process_AddChanged()
+    EndIf
+    _Process_Step("Da thay the xong", 1, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
+    _Process_Done("Find Replace: changed=" & $g_iProcessChanged & ", skipped=" & $g_iProcessSkipped & ", errors=" & $g_iProcessErrors)
 EndFunc
 
 ; Find Next
@@ -63,7 +70,8 @@ Func _CollectParenthesizedMatches($sText)
         If $iEnd = 0 Then ExitLoop
 
         Local $sInner = StringMid($sText, $iStart + 1, $iEnd - $iStart - 1)
-        If StringStripWS($sInner, 3) <> "" And Not StringInStr($sInner, "(") And Not StringInStr($sInner, ")") Then
+        If StringStripWS($sInner, 3) <> "" And Not StringInStr($sInner, "(") And Not StringInStr($sInner, ")") And _
+                _ShouldRemoveEnglishParenthesizedText($sInner) Then
             Local $iDeleteStart = $iStart
             Local $sPrev = ""
             Local $sNext = ""
@@ -87,6 +95,32 @@ Func _CollectParenthesizedMatches($sText)
     WEnd
 
     Return $aMatches
+EndFunc
+
+Func _ShouldRemoveEnglishParenthesizedText($sInner)
+    Local $sTrimmed = StringStripWS($sInner, 3)
+    If $sTrimmed = "" Then Return False
+
+    ; Giu lai viet tat/to hop viet hoa: KPI, KOL, B2B, ROI...
+    If StringRegExp($sTrimmed, "^[A-Z0-9][A-Z0-9\s\/&\-\.\+]{1,20}$") Then Return False
+
+    ; Giu lai nam/trich dan ngan gon: (2011), (2011a), (2020, p. 12)
+    If StringRegExp($sTrimmed, "^\d{4}[a-z]?(?:\s*[,;:]\s*(?:p|pp)\.?\s*\d+(?:\s*-\s*\d+)?)?$") Then Return False
+
+    ; Giu lai citation tac gia-nam: (Smith, 2011), (PR Smith, 2011), (Smith et al., 2011)
+    If StringRegExp($sTrimmed, "^(?:[A-Z][A-Za-z'`\-]*|et al\.?)(?:\s+(?:[A-Z][A-Za-z'`\-]*|et al\.?))*[,]?\s+\d{4}[a-z]?(?:\s*[,;:]\s*(?:p|pp)\.?\s*\d+(?:\s*-\s*\d+)?)?$") Then Return False
+
+    ; Chi xu ly cum co chu cai Latin va khong co dau tieng Viet.
+    If Not StringRegExp($sTrimmed, "[A-Za-z]") Then Return False
+    If StringRegExp($sTrimmed, "[^A-Za-z0-9\s,;:\.\-\/&'\+%]") Then Return False
+
+    Local $sLettersOnly = StringRegExpReplace($sTrimmed, "[^A-Za-z]", "")
+    If StringLen($sLettersOnly) < 4 Then Return False
+
+    ; Neu toan bo la 1 tu Viet hoa/ngan gon thi uu tien giu lai.
+    If StringRegExp($sTrimmed, "^[A-Z][A-Za-z0-9\-]{0,5}$") Then Return False
+
+    Return True
 EndFunc
 
 Func _ParenthesesPreviewContext($sText, $iStart1Based, $iEnd1Based)
@@ -114,10 +148,21 @@ Func _DeleteParenthesizedMatchesInWordRange($oScopeRange, $aMatches)
     If Not IsObj($oScopeRange) Or Not IsArray($aMatches) Then Return 0
 
     Local $iRemoved = 0
-    For $i = 0 To UBound($aMatches, 1) - 1
-        If _DeleteFirstParenthesizedTextInScope($oScopeRange, $aMatches[$i][2]) Then
+    Local $iBaseStart = $oScopeRange.Start
+    For $i = UBound($aMatches, 1) - 1 To 0 Step -1
+        Local $iStart = $iBaseStart + $aMatches[$i][0] - 1
+        Local $iEnd = $iBaseStart + $aMatches[$i][1]
+        Local $oDeleteRange = $g_oDoc.Range($iStart, $iEnd)
+        If IsObj($oDeleteRange) And _Perf_RetrySetRangeText($oDeleteRange, "") Then
             $iRemoved += 1
         EndIf
+    Next
+
+    If $iRemoved > 0 Then Return $iRemoved
+
+    ; Fallback for unusual Word ranges whose offsets do not map cleanly.
+    For $i = 0 To UBound($aMatches, 1) - 1
+        If _DeleteFirstParenthesizedTextInScope($oScopeRange, $aMatches[$i][2]) Then $iRemoved += 1
     Next
     Return $iRemoved
 EndFunc
@@ -190,13 +235,14 @@ Func _PreviewParenthesizedPhrases()
 
     Local $aMatches = _CollectParenthesizedMatches($oRange.Text)
     If Not IsArray($aMatches) Or UBound($aMatches, 1) = 0 Then
-        MsgBox($MB_ICONINFORMATION, "Xem truoc (...)", "Khong tim thay cum nao dang (...) trong " & $sScopeLabel & ".")
+        MsgBox($MB_ICONINFORMATION, "Xem truoc ngoac tieng Anh", "Khong tim thay cum ngoac tieng Anh nao trong " & $sScopeLabel & ".")
         Return
     EndIf
 
-    Local $sPreview = "XEM TRUOC CUM (...) SE BI XOA - " & StringUpper($sScopeLabel) & @CRLF & @CRLF & _
+    Local $sPreview = "XEM TRUOC NGOAC TIENG ANH SE BI XOA - " & StringUpper($sScopeLabel) & @CRLF & @CRLF & _
         "Tong so: " & UBound($aMatches, 1) & @CRLF & _
-        "Pham vi: " & $sScopeLabel & @CRLF & @CRLF
+        "Pham vi: " & $sScopeLabel & @CRLF & _
+        "Giu lai: nam/trich dan va viet tat (KPI, KOL, ...)" & @CRLF & @CRLF
 
     Local $iLimit = 40
     For $i = 0 To UBound($aMatches, 1) - 1
@@ -208,7 +254,7 @@ Func _PreviewParenthesizedPhrases()
     Next
 
     _LogPreview($sPreview)
-    MsgBox($MB_ICONINFORMATION, "Xem truoc (...)", $sPreview)
+    MsgBox($MB_ICONINFORMATION, "Xem truoc ngoac tieng Anh", $sPreview)
 EndFunc
 
 Func _RemoveParenthesizedPhrasesInRange($oRange, $sScopeLabel)
@@ -216,22 +262,28 @@ Func _RemoveParenthesizedPhrasesInRange($oRange, $sScopeLabel)
 
     Local $aMatches = _CollectParenthesizedMatches($oRange.Text)
     If Not IsArray($aMatches) Or UBound($aMatches, 1) = 0 Then
-        _UpdateProgress("Khong tim thay cum (...) trong " & $sScopeLabel)
-        MsgBox($MB_ICONINFORMATION, "Thong bao", "Khong tim thay cum nao dang (...) trong " & $sScopeLabel & ".")
+        _UpdateProgress("Khong tim thay ngoac tieng Anh trong " & $sScopeLabel)
+        MsgBox($MB_ICONINFORMATION, "Thong bao", "Khong tim thay cum ngoac tieng Anh nao trong " & $sScopeLabel & ".")
         Return
     EndIf
 
-    _UpdateProgress("Dang xoa cum (...) trong " & $sScopeLabel & "...")
+    _Process_Start("Xoa ngoac tieng Anh", UBound($aMatches, 1), $sScopeLabel)
+    _Process_Step("Dang xoa ngoac tieng Anh", 0)
+    Local $aBatch = _Perf_BeginWordBatch("Xoa ngoac tieng Anh")
     Local $iRemoved = _DeleteParenthesizedMatchesInWordRange($oRange, $aMatches)
+    _Perf_EndWordBatch($aBatch)
     If $iRemoved = 0 Then
-        _UpdateProgress("Khong xoa duoc cum (...) trong " & $sScopeLabel)
-        MsgBox($MB_ICONWARNING, "Thong bao", "Da tim thay cum (...), nhung Word khong cho phep sua noi dung trong " & $sScopeLabel & ".")
+        _UpdateProgress("Khong xoa duoc ngoac tieng Anh trong " & $sScopeLabel)
+        MsgBox($MB_ICONWARNING, "Thong bao", "Da tim thay ngoac tieng Anh, nhung Word khong cho phep sua noi dung trong " & $sScopeLabel & ".")
         Return
     EndIf
 
-    _UpdateProgress("Da xoa " & $iRemoved & " cum (...) trong " & $sScopeLabel)
+    _Process_Done("Da xoa " & $iRemoved & " cum ngoac tieng Anh trong " & $sScopeLabel)
     MsgBox($MB_ICONINFORMATION, "Hoan tat", _
-        "Da xoa " & $iRemoved & " cum (...) trong " & $sScopeLabel & "." & @CRLF & @CRLF & _
+        "Da xoa " & $iRemoved & " cum ngoac tieng Anh trong " & $sScopeLabel & "." & @CRLF & @CRLF & _
+        "Van giu lai:" & @CRLF & _
+        "- Nam/trich dan (vi du: PR Smith (2011), (Smith, 2011))" & @CRLF & _
+        "- Viet tat viet hoa (vi du: KPI, KOL)" & @CRLF & @CRLF & _
         "Ho tro 2 che do:" & @CRLF & _
         "- Xoa vung chon" & @CRLF & _
         "- Xoa toan bo tai lieu")
@@ -241,7 +293,8 @@ EndFunc
 Func _ResizeImages()
     If Not _CheckConnection() Then Return
     Local $oShapes = $g_oDoc.InlineShapes
-    If Not IsObj($oShapes) Or $oShapes.Count = 0 Then
+    Local $iShapeCount = _Perf_CollectionCount($oShapes)
+    If Not IsObj($oShapes) Or $iShapeCount = 0 Then
         MsgBox($MB_ICONWARNING, "Thong bao", "Khong co hinh!")
         Return
     EndIf
@@ -249,38 +302,61 @@ Func _ResizeImages()
     Local $fMaxW = $g_oDoc.PageSetup.PageWidth - $g_oDoc.PageSetup.LeftMargin - $g_oDoc.PageSetup.RightMargin
     Local $n = 0
 
-    _UpdateProgress("Dang resize hinh...")
-    For $i = 1 To $oShapes.Count
+    Local $aBatch = _Perf_BeginWordBatch("Resize Images")
+    _Process_Start("Resize Images", $iShapeCount, "inline shapes")
+    _Process_Step("Dang resize hinh", 0)
+    For $i = 1 To $iShapeCount
         Local $oS = $oShapes.Item($i)
-        If Not IsObj($oS) Then ContinueLoop
+        If Not IsObj($oS) Then
+            _Process_AddSkipped()
+            ContinueLoop
+        EndIf
+        If $g_bDomSkipEquations And _Dom_IsMathInlineShape($oS) Then
+            _Process_AddSkipped()
+            ContinueLoop
+        EndIf
         
         If $oS.Width > $fMaxW Then
             Local $fRatio = $fMaxW / $oS.Width
-            $oS.Width = $fMaxW
-            $oS.Height = $oS.Height * $fRatio
+            If Not $g_bDomDryRun Then
+                $oS.Width = $fMaxW
+                $oS.Height = $oS.Height * $fRatio
+            EndIf
             $n += 1
+            _Process_AddChanged()
         EndIf
+        _Process_Step("Dang resize hinh", $i, $n, $g_iProcessSkipped, $g_iProcessErrors)
     Next
-    _UpdateProgress("Da resize " & $n & "/" & $oShapes.Count & " hinh!")
+    _Perf_EndWordBatch($aBatch)
+    _Process_Done("Da resize " & $n & "/" & $iShapeCount & " hinh")
 EndFunc
 
 ; Center Images
 Func _CenterImages()
     If Not _CheckConnection() Then Return
     Local $oShapes = $g_oDoc.InlineShapes
-    If Not IsObj($oShapes) Or $oShapes.Count = 0 Then
+    Local $iShapeCount = _Perf_CollectionCount($oShapes)
+    If Not IsObj($oShapes) Or $iShapeCount = 0 Then
         MsgBox($MB_ICONWARNING, "Thong bao", "Khong co hinh!")
         Return
     EndIf
     
-    _UpdateProgress("Dang can giua hinh...")
-    For $i = 1 To $oShapes.Count
+    Local $aBatch = _Perf_BeginWordBatch("Center Images")
+    _Process_Start("Center Images", $iShapeCount, "inline shapes")
+    For $i = 1 To $iShapeCount
         Local $oShape = $oShapes.Item($i)
-        If IsObj($oShape) And IsObj($oShape.Range) Then
-            $oShape.Range.ParagraphFormat.Alignment = $WD_ALIGN_CENTER
+        If IsObj($oShape) And $g_bDomSkipEquations And _Dom_IsMathInlineShape($oShape) Then
+            _Process_AddSkipped()
+        ElseIf IsObj($oShape) And IsObj($oShape.Range) Then
+            If Not $g_bDomDryRun Then $oShape.Range.ParagraphFormat.Alignment = $WD_ALIGN_CENTER
+            _Process_AddChanged()
+        Else
+            _Process_AddSkipped()
         EndIf
+        _Process_Step("Dang can giua hinh", $i, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
     Next
-    _UpdateProgress("Da can giua " & $oShapes.Count & " hinh!")
+    _Perf_EndWordBatch($aBatch)
+    _Process_Done("Da can giua " & $g_iProcessChanged & "/" & $iShapeCount & " hinh")
 EndFunc
 
 ; Auto Caption Images
@@ -294,36 +370,50 @@ Func _RemoveAllImages()
     If MsgBox($MB_YESNO, "Xac nhan", "Xoa tat ca hinh?") <> $IDYES Then Return
     
     Local $oShapes = $g_oDoc.InlineShapes
-    Local $n = $oShapes.Count
+    Local $n = _Perf_CollectionCount($oShapes)
+    Local $aBatch = _Perf_BeginWordBatch("Remove Images")
+    _Process_Start("Remove Images", $n, "inline shapes")
     While $oShapes.Count > 0
-        $oShapes.Item(1).Delete()
+        If _Dom_SafeDelete($oShapes.Item(1)) Then _Process_AddChanged()
+        _Process_Step("Dang xoa hinh", $g_iProcessChanged + $g_iProcessSkipped, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
+        If $g_bDomDryRun Then ExitLoop
     WEnd
-    _UpdateProgress("Da xoa " & $n & " hinh!")
+    _Perf_EndWordBatch($aBatch)
+    _Process_Done("Da xoa " & $g_iProcessChanged & "/" & $n & " hinh")
 EndFunc
 
 ; AutoFit Tables
 Func _AutoFitTables($iMode)
     If Not _CheckConnection() Then Return
     Local $oTables = $g_oDoc.Tables
-    If Not IsObj($oTables) Or $oTables.Count = 0 Then
+    Local $iTableCount = _Perf_CollectionCount($oTables)
+    If Not IsObj($oTables) Or $iTableCount = 0 Then
         MsgBox($MB_ICONWARNING, "Thong bao", "Khong co bang!")
         Return
     EndIf
 
-    _UpdateProgress("Dang AutoFit bang...")
+    Local $aBatch = _Perf_BeginWordBatch("AutoFit Tables")
+    _Process_Start("AutoFit Tables", $iTableCount, "tables")
     Local $iSuccess = 0
-    For $i = 1 To $oTables.Count
+    For $i = 1 To $iTableCount
         Local $oTable = $oTables.Item($i)
         If IsObj($oTable) Then
-            If $iMode = 1 Then
-                $oTable.AutoFitBehavior(1) ; wdAutoFitContent
-            Else
-                $oTable.AutoFitBehavior(2) ; wdAutoFitWindow
+            If Not $g_bDomDryRun Then
+                If $iMode = 1 Then
+                    $oTable.AutoFitBehavior(1) ; wdAutoFitContent
+                Else
+                    $oTable.AutoFitBehavior(2) ; wdAutoFitWindow
+                EndIf
             EndIf
             $iSuccess += 1
+            _Process_AddChanged()
+        Else
+            _Process_AddSkipped()
         EndIf
+        _Process_Step("Dang AutoFit bang", $i, $iSuccess, $g_iProcessSkipped, $g_iProcessErrors)
     Next
-    _UpdateProgress("Da AutoFit " & $iSuccess & "/" & $oTables.Count & " bang!")
+    _Perf_EndWordBatch($aBatch)
+    _Process_Done("Da AutoFit " & $iSuccess & "/" & $iTableCount & " bang")
 EndFunc
 
 ; Auto Caption Tables
@@ -335,32 +425,33 @@ EndFunc
 Func _AddTableBorders()
     If Not _CheckConnection() Then Return
     Local $oTables = $g_oDoc.Tables
-    If Not IsObj($oTables) Or $oTables.Count = 0 Then
+    Local $iTableCount = _Perf_CollectionCount($oTables)
+    If Not IsObj($oTables) Or $iTableCount = 0 Then
         MsgBox($MB_ICONWARNING, "Thong bao", "Khong co bang!")
         Return
     EndIf
     
-    _UpdateProgress("Dang them vien bang...")
-    For $i = 1 To $oTables.Count
+    Local $aBatch = _Perf_BeginWordBatch("Add Table Borders")
+    _Process_Start("Add Table Borders", $iTableCount, "tables")
+    For $i = 1 To $iTableCount
         Local $oTable = $oTables.Item($i)
         If IsObj($oTable) Then
-            $oTable.Borders.Enable = True
+            If Not $g_bDomDryRun Then $oTable.Borders.Enable = True
+            _Process_AddChanged()
+        Else
+            _Process_AddSkipped()
         EndIf
+        _Process_Step("Dang them vien bang", $i, $g_iProcessChanged, $g_iProcessSkipped, $g_iProcessErrors)
     Next
-    _UpdateProgress("Da them vien " & $oTables.Count & " bang!")
+    _Perf_EndWordBatch($aBatch)
+    _Process_Done("Da them vien " & $g_iProcessChanged & "/" & $iTableCount & " bang")
 EndFunc
 
 
 ; Word Count
 Func _ShowWordCount()
     If Not _CheckConnection() Then Return
-    Local $sMsg = "THONG KE TAI LIEU" & @CRLF & @CRLF
-    $sMsg &= "So trang: " & $g_oDoc.ComputeStatistics(2) & @CRLF
-    $sMsg &= "So tu: " & $g_oDoc.ComputeStatistics(0) & @CRLF
-    $sMsg &= "So ky tu: " & $g_oDoc.ComputeStatistics(3) & @CRLF
-    $sMsg &= "So doan van: " & $g_oDoc.ComputeStatistics(4) & @CRLF
-    $sMsg &= "So bang: " & $g_oDoc.Tables.Count & @CRLF
-    $sMsg &= "So hinh: " & $g_oDoc.InlineShapes.Count
+    Local $sMsg = _BuildDocumentStatsText("THONG KE TAI LIEU")
     
     _LogPreview($sMsg)
     MsgBox($MB_ICONINFORMATION, "Thong ke", $sMsg)
@@ -391,12 +482,27 @@ Func _ExportStats()
 
     Local $sStats = "THONG KE TAI LIEU: " & $g_oDoc.Name & @CRLF
     $sStats &= "Ngay: " & @MDAY & "/" & @MON & "/" & @YEAR & @CRLF & @CRLF
-    $sStats &= "So trang: " & $g_oDoc.ComputeStatistics(2) & @CRLF
-    $sStats &= "So tu: " & $g_oDoc.ComputeStatistics(0) & @CRLF
-    $sStats &= "So ky tu: " & $g_oDoc.ComputeStatistics(3) & @CRLF
-    $sStats &= "So bang: " & $g_oDoc.Tables.Count & @CRLF
-    $sStats &= "So hinh: " & $g_oDoc.InlineShapes.Count
+    $sStats &= _BuildDocumentStatsText("")
 
     FileWrite($sPath, $sStats)
     _UpdateProgress("Da xuat bao cao!")
+EndFunc
+
+Func _BuildDocumentStatsText($sTitle = "")
+    Local $iPages = $g_oDoc.ComputeStatistics(2)
+    Local $iWords = $g_oDoc.ComputeStatistics(0)
+    Local $iChars = $g_oDoc.ComputeStatistics(3)
+    Local $iParas = $g_oDoc.ComputeStatistics(4)
+    Local $iTables = _Perf_CollectionCount($g_oDoc.Tables)
+    Local $iImages = _Perf_CollectionCount($g_oDoc.InlineShapes)
+
+    Local $sMsg = ""
+    If $sTitle <> "" Then $sMsg &= $sTitle & @CRLF & @CRLF
+    $sMsg &= "So trang: " & $iPages & @CRLF
+    $sMsg &= "So tu: " & $iWords & @CRLF
+    $sMsg &= "So ky tu: " & $iChars & @CRLF
+    If $sTitle <> "" Then $sMsg &= "So doan van: " & $iParas & @CRLF
+    $sMsg &= "So bang: " & $iTables & @CRLF
+    $sMsg &= "So hinh: " & $iImages
+    Return $sMsg
 EndFunc

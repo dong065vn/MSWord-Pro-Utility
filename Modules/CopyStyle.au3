@@ -89,14 +89,10 @@ EndFunc
 
 ; === FUNCTION: Refresh List ===
 Func _RefreshStyleDocsList()
-    $g_oWord = ObjGet("", "Word.Application")
-    If Not IsObj($g_oWord) Then
-        MsgBox($MB_ICONWARNING, "Loi", "Vui long mo Word truoc!")
-        Return
-    EndIf
+    If Not _CheckConnection() Then Return
 
     Local $oDocs = $g_oWord.Documents
-    If $oDocs.Count = 0 Then
+    If Not IsObj($oDocs) Or $oDocs.Count = 0 Then
         MsgBox($MB_ICONWARNING, "Loi", "Chua co file nao mo!")
         Return
     EndIf
@@ -136,6 +132,7 @@ Func _CopyAllStyles()
         Return
     EndIf
     
+    Local $aBatch = _Perf_BeginWordBatch("Copy All Styles")
     _UpdateProgress("Dang copy styles...")
     
     Local $iCopied = 0
@@ -143,7 +140,7 @@ Func _CopyAllStyles()
     
     ; FIX: Chi copy style dang dung (InUse) hoac user-defined (khong BuiltIn)
     Local $oStyles = $oSource.Styles
-    Local $iTotal = $oStyles.Count
+    Local $iTotal = _Perf_CollectionCount($oStyles)
     
     For $i = 1 To $iTotal
         Local $oStyle = $oStyles.Item($i)
@@ -173,6 +170,7 @@ Func _CopyAllStyles()
     Local $sMsg = "Thanh cong: " & $iCopied & " styles"
     If $iFailed > 0 Then $sMsg &= @CRLF & "Loi: " & $iFailed
     
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Hoan tat!")
     MsgBox($MB_ICONINFORMATION, "Ket qua", $sMsg)
 EndFunc
@@ -258,36 +256,30 @@ Func _ShowStyleSelector()
     ; === PHAN GAN PHIM TAT ===
     GUICtrlCreateGroup(" Gan phim tat ", 15, 440, 750, 55)
     GUICtrlCreateLabel("Double-click vao cot Hotkey de nhap phim tat, hoac:", 25, 463, 280, 20)
-    $g_btnOpenModifyStyle = GUICtrlCreateButton("Mo Modify Style", 310, 458, 120, 28)
-    GUICtrlSetBkColor(-1, 0x3498DB)
+    $g_btnOpenModifyStyle = _CreateSquareButton("Mo Modify Style", 310, 458, 120, 28, $BS_FLAT, 0x3498DB)
     GUICtrlSetTip(-1, "Mo dialog Modify Style cua Word de gan phim tat")
-    $g_btnRefreshHotkeys = GUICtrlCreateButton("Cap nhat", 440, 458, 80, 28)
-    GUICtrlSetBkColor(-1, 0xF39C12)
-    Local $btnEditHotkey = GUICtrlCreateButton("Nhap phim tat", 530, 458, 100, 28)
-    GUICtrlSetBkColor(-1, 0x27AE60)
+    $g_btnRefreshHotkeys = _CreateSquareButton("Cap nhat", 440, 458, 80, 28, $BS_FLAT, 0xF39C12)
+    Local $btnEditHotkey = _CreateSquareButton("Nhap phim tat", 530, 458, 100, 28, $BS_FLAT, 0x27AE60)
     GUICtrlSetTip(-1, "Chon style va nhan de nhap phim tat")
-    Local $btnClearHotkey = GUICtrlCreateButton("Xoa", 640, 458, 60, 28)
-    GUICtrlSetBkColor(-1, 0xE74C3C)
+    Local $btnClearHotkey = _CreateSquareButton("Xoa", 640, 458, 60, 28, $BS_FLAT, 0xE74C3C)
     GUICtrlSetTip(-1, "Xoa phim tat cua style da chon")
     GUICtrlCreateGroup("", -99, -99, 1, 1)
     
     ; === NUT CHUC NANG ===
-    Local $btnSelectAll = GUICtrlCreateButton("Chon tat ca", 10, 505, 90, 35)
-    Local $btnDeselectAll = GUICtrlCreateButton("Bo chon", 110, 505, 90, 35)
+    Local $btnSelectAll = _CreateSquareButton("Chon tat ca", 10, 505, 90, 35, $BS_FLAT)
+    Local $btnDeselectAll = _CreateSquareButton("Bo chon", 110, 505, 90, 35, $BS_FLAT)
     
     ; Checkbox tuy chon
     Local $chkPageSetup = GUICtrlCreateCheckbox(" Page Setup", 220, 510, 100, 22)
     GUICtrlSetState(-1, $GUI_CHECKED)
     Local $chkHeaderFooter = GUICtrlCreateCheckbox(" Header/Footer", 330, 510, 120, 22)
     
-    Local $btnSaveHotkeys = GUICtrlCreateButton("Luu Hotkeys", 530, 500, 100, 40)
-    GUICtrlSetBkColor(-1, 0x9B59B6)
+    Local $btnSaveHotkeys = _CreateSquareButton("Luu Hotkeys", 530, 500, 100, 40, $BS_FLAT, 0x9B59B6)
     GUICtrlSetFont(-1, 9, 600)
     
-    Local $btnCopy = GUICtrlCreateButton("COPY", 530, 555, 120, 45, $BS_DEFPUSHBUTTON)
+    Local $btnCopy = _CreateSquareButton("COPY", 530, 555, 120, 45, BitOR($BS_FLAT, $BS_DEFPUSHBUTTON), 0x27AE60)
     GUICtrlSetFont(-1, 11, 700)
-    GUICtrlSetBkColor(-1, 0x27AE60)
-    Local $btnCancel = GUICtrlCreateButton("Dong", 660, 555, 100, 45)
+    Local $btnCancel = _CreateSquareButton("Dong", 660, 555, 100, 45, $BS_FLAT)
     
     GUISetState(@SW_SHOW, $hPopup)
     
@@ -506,9 +498,10 @@ Func _CopySelectedStylesByName($oSource, $oTarget, $aStyleNames)
     Local $iCopied = 0
     Local $iTotal = UBound($aStyleNames)
 
+    Local $aBatch = _Perf_BeginWordBatch("Copy Selected Styles")
     For $i = 0 To $iTotal - 1
         Local $sStyleName = $aStyleNames[$i]
-        _UpdateProgress("Dang copy " & ($i + 1) & "/" & $iTotal & ": " & $sStyleName)
+        If _Perf_ShouldRenderStep($i + 1, $iTotal, 10) Then _UpdateProgress("Dang copy " & ($i + 1) & "/" & $iTotal & ": " & $sStyleName)
 
         ; SU DUNG _SmartCopyStyle (Ultimate Fix)
         If _SmartCopyStyle($g_oWord, $oSource, $oTarget, $sStyleName) = 1 Then
@@ -516,6 +509,7 @@ Func _CopySelectedStylesByName($oSource, $oTarget, $aStyleNames)
         EndIf
     Next
 
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da copy " & $iCopied & " styles!")
     Return $iCopied
 EndFunc
@@ -587,6 +581,7 @@ Func _CopySelectedStyles()
         Return
     EndIf
     
+    Local $aBatch = _Perf_BeginWordBatch("Copy Style Options")
     _UpdateProgress("Dang copy theo tuy chon...")
     Local $sResult = "=== KET QUA COPY THEO TUY CHON ===" & @CRLF & @CRLF
     
@@ -623,6 +618,7 @@ Func _CopySelectedStyles()
     EndIf
     
     _LogPreview($sResult)
+    _Perf_EndWordBatch($aBatch)
     _UpdateProgress("Da copy theo tuy chon!")
     MsgBox($MB_ICONINFORMATION, "Thanh cong", "Da copy theo tuy chon!")
 EndFunc
@@ -645,12 +641,11 @@ Func _CopyDocStyles($oSource, $oTarget)
     If Not IsObj($oSrcStyles) Then Return 0
 
     Local $iCopied = 0, $iFailed = 0
-    Local $iTotal = $oSrcStyles.Count
-    Local Const $wdStyleTypeParagraph = 1
-    Local Const $wdStyleTypeCharacter = 2
+    Local $iTotal = _Perf_CollectionCount($oSrcStyles)
 
     ; Thu thap danh sach style can copy
-    Local $aStylesToCopy[1]
+    Local $iCapacity = 64
+    Local $aStylesToCopy[$iCapacity]
     Local $iStyleCount = 0
 
     For $i = 1 To $iTotal
@@ -663,7 +658,7 @@ Func _CopyDocStyles($oSource, $oTarget)
         ; Chi copy style dang su dung hoac khong phai built-in
         If Not $oSrcStyle.InUse And $oSrcStyle.BuiltIn Then ContinueLoop
 
-        ReDim $aStylesToCopy[$iStyleCount + 1]
+        _Perf_NormalizeArrayCapacity($aStylesToCopy, $iCapacity, $iStyleCount + 1, 64)
         $aStylesToCopy[$iStyleCount] = $oSrcStyle.NameLocal
         $iStyleCount += 1
     Next
@@ -696,15 +691,8 @@ EndFunc
 Func _SetStyleQuickGallery($oDoc, $sStyleName, $bQuickStyle = True, $iPriority = 1)
     If Not IsObj($oDoc) Then Return False
 
-    Local $oStyle = 0
-    For $i = 1 To $oDoc.Styles.Count
-        If $oDoc.Styles.Item($i).NameLocal = $sStyleName Then
-            $oStyle = $oDoc.Styles.Item($i)
-            ExitLoop
-        EndIf
-    Next
-
-    If Not IsObj($oStyle) Then Return False
+    Local $oStyle = $oDoc.Styles($sStyleName)
+    If @error Or Not IsObj($oStyle) Then Return False
 
     $oStyle.QuickStyle = $bQuickStyle
     $oStyle.Priority = $iPriority
@@ -861,3 +849,4 @@ Func _OpenModifyStyleDialog()
     
     Return $bResult
 EndFunc
+

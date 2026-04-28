@@ -177,7 +177,7 @@ function Get-LatestVersion([string]$Repo, [string]$ConfigPath) {
     $versions = New-Object System.Collections.Generic.List[version]
     try { $versions.Add([version](Get-VersionFromConfig $ConfigPath)) } catch {}
     Get-ChildItem (Join-Path $Repo 'Releases') -Filter 'RELEASE_NOTES_v*.md' -File -ErrorAction SilentlyContinue | ForEach-Object {
-        if ($_.BaseName -match '^RELEASE_NOTES_v(\d+\.\d+\.\d+)$') {
+        if ($_.BaseName -match '^RELEASE_NOTES_v(\d+(?:\.\d+){2,3})$') {
             try { $versions.Add([version]$matches[1]) } catch {}
         }
     }
@@ -194,13 +194,15 @@ function Set-VersionInFiles([string]$ConfigPath, [string]$MainPath, [string]$New
     $configContent = Get-Content $ConfigPath -Raw
     $configUpdated = [regex]::Replace($configContent, '(?m)(Global Const \$VERSION = ")([^"]+)(")', ('${1}' + $NewVersion + '${3}'), 1)
     $configUpdated = [regex]::Replace($configUpdated, '(?m)(Global Const \$APP_VERSION = ")([^"]+)(")', ('${1}' + $NewVersion + '${3}'), 1)
-    if ($configUpdated -eq $configContent) { $configUpdated = $configContent }
-    Set-Content $ConfigPath -Value $configUpdated -Encoding UTF8
+    if ($configUpdated -ne $configContent) {
+        Set-Content $ConfigPath -Value $configUpdated -Encoding UTF8
+    }
 
     $mainContent = Get-Content $MainPath -Raw
-    $mainUpdated = [regex]::Replace($mainContent, '(?m)(; PDF to Word Fixer Pro v)(\d+\.\d+\.\d+)( - MODULAR ARCHITECTURE)', ('${1}' + $NewVersion + '${3}'), 1)
-    if ($mainUpdated -eq $mainContent) { $mainUpdated = $mainContent }
-    Set-Content $MainPath -Value $mainUpdated -Encoding UTF8
+    $mainUpdated = [regex]::Replace($mainContent, '(?m)(; PDF to Word Fixer Pro v)(\d+(?:\.\d+){2,3})( - MODULAR ARCHITECTURE)', ('${1}' + $NewVersion + '${3}'), 1)
+    if ($mainUpdated -ne $mainContent) {
+        Set-Content $MainPath -Value $mainUpdated -Encoding UTF8
+    }
 }
 
 function Get-IconPngSet([string]$BaseDir, [string]$Prefix) {
@@ -322,7 +324,7 @@ function Copy-CurrentSourceTree([string]$Repo, [string]$DestinationRoot) {
         if ($relative -match '^(?:\.git|\.vs|bin|obj)(\\|$)') { return }
         if ($relative -match '^Releases\\v[^\\]+\\binary(\\|$)') { return }
         if ($relative -match '^Releases\\PDF_to_Word_Fixer_Pro_v.+\.zip$') { return }
-        if ($relative -match '^Main_compiled(?:_v\d+\.\d+\.\d+)?\.exe$') { return }
+        if ($relative -match '^Main_compiled(?:_v\d+(?:\.\d+){2,3})?\.exe$') { return }
         if ($relative -match '^Main_build_\d+.*\.exe$') { return }
         if ($relative -match '^aut2exe_build\.log$') { return }
         $dest = Join-Path $DestinationRoot $relative
@@ -366,6 +368,7 @@ $repo = (Resolve-Path $RepoRoot).Path
 $configPath = Join-Path $repo 'Config.au3'
 $mainPath = Join-Path $repo 'Main.au3'
 $rootExePath = Join-Path $repo 'Main_compiled.exe'
+$fallbackExePath = Join-Path $repo 'Main.exe'
 $aut2exe = 'C:\Program Files (x86)\AutoIt3\Aut2Exe\Aut2exe.exe'
 $au3check = 'C:\Program Files (x86)\AutoIt3\Au3Check.exe'
 $latestVersion = Get-LatestVersion -Repo $repo -ConfigPath $configPath
@@ -395,9 +398,19 @@ if ($LASTEXITCODE -ne 0) { throw "Au3Check failed with exit code $LASTEXITCODE" 
 Write-Host '[4/7] Compile'
 Remove-Item $rootExePath -Force -ErrorAction SilentlyContinue
 Remove-Item $versionedExePath -Force -ErrorAction SilentlyContinue
-& $aut2exe /in $mainPath /out $rootExePath
-Start-Sleep -Milliseconds 1000
-if (-not (Test-Path $rootExePath)) { throw "Aut2Exe did not produce $rootExePath" }
+Start-Process -FilePath $aut2exe -ArgumentList @('/in', $mainPath, '/out', $versionedExePath) -Wait -WindowStyle Hidden
+for ($i = 0; $i -lt 20 -and -not (Test-Path $versionedExePath); $i++) {
+    Start-Sleep -Milliseconds 500
+}
+if (-not (Test-Path $versionedExePath)) {
+    if (Test-Path $fallbackExePath) {
+        Move-Item $fallbackExePath $versionedExePath -Force
+    }
+    else {
+        throw "Aut2Exe did not produce $versionedExePath"
+    }
+}
+Copy-Item $versionedExePath $rootExePath -Force
 
 Write-Host '[5/7] Patch and verify embedded icon'
 Invoke-PatchIconWithRetry -ExePath $rootExePath -IconPath $iconState.RoundedIco
@@ -427,6 +440,7 @@ Copy-Item $rootExePath (Join-Path $binaryStage 'Main_compiled.exe') -Force
 Copy-Item $notesPath (Join-Path $binaryStage (Split-Path $notesPath -Leaf)) -Force
 Copy-Item (Join-Path $repo 'app_icons') (Join-Path $binaryStage 'app_icons') -Recurse -Force
 Copy-Item (Join-Path $repo 'Resources') (Join-Path $binaryStage 'Resources') -Recurse -Force
+Remove-Item $releaseBinaryDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $releaseBinaryDir | Out-Null
 Copy-Item (Join-Path $binaryStage '*') $releaseBinaryDir -Recurse -Force
 

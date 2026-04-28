@@ -1,6 +1,9 @@
 #include "..\Config.au3"
 #include "..\Core\WordConnection.au3"
 #include "..\Shared\Helpers.au3"
+#include "..\Shared\WordPerf.au3"
+#include "..\Shared\ProcessTracker.au3"
+#include "..\Shared\WordDom.au3"
 #include "..\Modules\AIFormat.au3"
 
 Global $g_sTestLog = ""

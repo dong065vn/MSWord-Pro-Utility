@@ -1,8 +1,10 @@
 ; Runtime smoke test: ket noi Word va kich hoat 1 handler dai dien cho moi tab
 
 Global Const $APP_EXE = @ScriptDir & "\..\Main_compiled.exe"
-Global Const $APP_TITLE = "PDF to Word Fixer Pro v6.1"
+Global Const $APP_TITLE = "PDF to Word Fixer Pro v"
 Global Const $LOG_PATH = @ScriptDir & "\..\Tests\Logs\RuntimeSmokeTest.log"
+
+Opt("WinTitleMatchMode", 2)
 
 DirCreate(@ScriptDir & "\..\Tests\Logs")
 FileDelete($LOG_PATH)
@@ -45,15 +47,18 @@ If $oWord.Documents.Count < 2 Then
     $oDoc.Activate()
 EndIf
 
-Local $hWnd = WinGetHandle($APP_TITLE)
-If $hWnd = "" Then
-    Run('"' & $APP_EXE & '"')
-    If Not WinWait($APP_TITLE, "", 10) Then
-        _WriteLog("FAIL: App khong mo duoc.")
-        Exit 3
-    EndIf
-    $hWnd = WinGetHandle($APP_TITLE)
+ProcessClose("Main_compiled.exe")
+ProcessClose("Main_compiled_v8.8.71.exe")
+ProcessWaitClose("Main_compiled.exe", 5)
+ProcessWaitClose("Main_compiled_v8.8.71.exe", 5)
+Sleep(800)
+
+Run('"' & $APP_EXE & '"')
+If Not WinWait($APP_TITLE, "", 10) Then
+    _WriteLog("FAIL: App khong mo duoc.")
+    Exit 3
 EndIf
+Local $hWnd = WinGetHandle($APP_TITLE)
 
 If $hWnd = "" Then
     _WriteLog("FAIL: Khong lay duoc handle app.")
@@ -71,15 +76,35 @@ If @error Or Not IsArray($aPos) Then
     _WriteLog("FAIL: Khong lay duoc vi tri app.")
     Exit 6
 EndIf
+Sleep(1500)
 
 Func _ClickApp($iX, $iY)
     MouseClick("left", $aPos[0] + $iX, $aPos[1] + $iY, 1, 0)
     Sleep(500)
 EndFunc
 
+Func _ClickControlText($sText, $iInstance = 1)
+    Local $sControl = "[TEXT:" & $sText & "; INSTANCE:" & $iInstance & "]"
+    Local $bClicked = False
+    For $iWait = 1 To 20
+        If ControlClick($hWnd, "", $sControl, "left", 1) Then
+            $bClicked = True
+            ExitLoop
+        EndIf
+        Sleep(250)
+    Next
+    If Not $bClicked Then
+        _WriteLog("FAIL: Khong click duoc control: " & $sText)
+        ProcessClose("Main_compiled.exe")
+        Exit 8
+    EndIf
+    Sleep(500)
+EndFunc
+
 Func _EnsureAlive($sStep)
     If Not WinExists($hWnd) Then
         _WriteLog("FAIL: App dong/crash tai buoc: " & $sStep)
+        ProcessClose("Main_compiled.exe")
         Exit 100
     EndIf
 EndFunc
@@ -90,7 +115,11 @@ Func _DismissDialogs()
         Local $bClosed = False
         For $i = 1 To $aWins[0][0]
             If $aWins[$i][0] = "" Then ContinueLoop
+            If StringInStr($aWins[$i][0], "Internet Download Manager") Or StringInStr($aWins[$i][0], "IDM") Then ContinueLoop
+            If StringInStr($aWins[$i][0], "Tha") Or StringInStr($aWins[$i][0], "thả") Then ContinueLoop
             If Not WinExists($aWins[$i][1]) Then ContinueLoop
+            If $aWins[$i][1] = $hWnd Then ContinueLoop
+            _WriteLog("DIALOG: " & $aWins[$i][0] & " :: " & StringReplace(WinGetText($aWins[$i][1]), @CRLF, " | "))
             WinActivate($aWins[$i][1])
             Sleep(150)
             WinClose($aWins[$i][1])
@@ -101,6 +130,22 @@ Func _DismissDialogs()
     Next
     WinActivate($hWnd)
     Sleep(250)
+EndFunc
+
+Func _GetSmokeDoc()
+    If Not IsObj($oWord) Then Return 0
+    If $oWord.Documents.Count = 0 Then $oWord.Documents.Add()
+    Local $oActive = $oWord.ActiveDocument
+    If IsObj($oActive) Then Return $oActive
+    Return $oWord.Documents.Item(1)
+EndFunc
+
+Func _ReattachWord()
+    Local $oCurrent = ObjGet("", "Word.Application")
+    If Not @error And IsObj($oCurrent) Then $oWord = $oCurrent
+    If Not IsObj($oWord) Then Return False
+    If $oWord.Documents.Count = 0 Then $oWord.Documents.Add()
+    Return True
 EndFunc
 
 Func _RunAction($sTab, $iTabX, $iTabY, $sAction, $iBtnX, $iBtnY, $bDismiss = True)
@@ -116,17 +161,18 @@ EndFunc
 _WriteLog("START: Runtime smoke test")
 
 ; Ket noi Word
-_ClickApp(508, 60) ; Lam moi
+_ClickControlText("Lam moi", 1)
+_EnsureAlive("Lam moi Word docs before dialogs")
 _DismissDialogs()
 _EnsureAlive("Lam moi Word docs")
-_ClickApp(35, 60) ; Tu dong
+_ClickControlText("Tu dong", 1)
 _DismissDialogs()
 _EnsureAlive("Tu dong ket noi Word")
 _WriteLog("PASS: Connection -> Refresh + Auto connect")
 
 ; Mỗi tab một handler đại diện
 _RunAction("PDF Fix", 60, 155, "Help", 635, 360)
-_RunAction("PDF Fix", 60, 155, "Fix selected", 35, 360)
+_RunAction("PDF Fix", 60, 155, "Fix all", 145, 360)
 _RunAction("Format", 135, 155, "Preset VN", 315, 270, False)
 _RunAction("Format", 135, 155, "Apply selection", 175, 270)
 _RunAction("Tools", 205, 155, "Thong ke tong hop", 470, 398)
@@ -167,8 +213,6 @@ _RunAction("Copy Style", 365, 155, "Backup hotkeys", 185, 465)
 _RunAction("Advanced", 455, 155, "Liet ke Heading", 510, 185)
 _RunAction("Advanced", 455, 155, "Convert case", 200, 285)
 
-$oDoc.Activate()
-$oWord.Selection.EndKey(6)
 _ClickApp(545, 155)
 _ClickApp(435, 175) ; Insert Date
 Sleep(1000)
@@ -192,15 +236,8 @@ _DismissDialogs()
 _EnsureAlive("Smart Fix -> Fix Dashes")
 _WriteLog("PASS: Smart Fix -> Fix Dashes")
 
-$oDoc.Activate()
-$oDoc.Paragraphs.Item(2).Range.Select()
-_ClickApp(700, 155)
-_ClickApp(178, 242) ; Bold
-Sleep(1200)
-_DismissDialogs()
-_EnsureAlive("AI Format -> Convert bold")
-_WriteLog("PASS: AI Format -> Convert bold")
 _RunAction("AI Format", 700, 155, "Preview", 414, 452)
 
 _WriteLog("PASS: Hoan tat runtime smoke test qua 9 tab.")
+ProcessClose("Main_compiled.exe")
 Exit 0

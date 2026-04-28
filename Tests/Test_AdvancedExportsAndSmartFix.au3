@@ -1,6 +1,11 @@
 #include "..\Config.au3"
 #include "..\Core\WordConnection.au3"
 #include "..\Shared\Helpers.au3"
+#include "..\Shared\WordPerf.au3"
+#include "..\Shared\ProcessTracker.au3"
+#include "..\Shared\WordDom.au3"
+#include "..\Shared\WordOps.au3"
+#include "..\Modules\PDFFix.au3"
 #include "..\Modules\Advanced.au3"
 #include "..\Modules\SmartFix.au3"
 #include "..\Modules\TOC.au3"
@@ -40,10 +45,9 @@ Func _CreateUiStubs()
 EndFunc
 
 Func _PrepareWord()
-    $g_oWord = ObjGet("", "Word.Application")
-    If @error Or Not IsObj($g_oWord) Then $g_oWord = ObjCreate("Word.Application")
+    $g_oWord = ObjCreate("Word.Application")
     If @error Or Not IsObj($g_oWord) Then Return False
-    $g_oWord.Visible = True
+    $g_oWord.Visible = False
     Return True
 EndFunc
 
@@ -129,6 +133,10 @@ Func _Run()
 
     Local $bSmartFix = _TestSmartFixFunctions()
     Local $bExports = _TestAdvancedExports()
+
+    If IsObj($g_oWord) Then $g_oWord.Quit()
+    $g_oDoc = 0
+    $g_oWord = 0
 
     If $bSmartFix And $bExports Then
         _Log("=== ALL PASS ===")
